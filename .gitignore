@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 测试与工具缓存
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# 运行数据（引擎仓库本身不应有 vault 数据；本地试验性 vault 一律忽略）
+.libry/
+*.log
+
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/

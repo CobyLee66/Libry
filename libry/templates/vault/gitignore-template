@@ -1,0 +1,14 @@
+# 运行密钥（包含会话签名密钥，绝不提交）
+.env
+
+# 引擎运行数据（索引缓存/关联图/embedding 缓存/锁/日志）
+.libry/
+
+# 多机同步模式：放开下面五行（用户数据经 git 双向同步，语义见引擎 sync-data 文档）
+#.libry/users.json
+#.libry/state.json
+#.libry/bookmarks.json
+#.libry/visibility.json
+#.libry/deletions.json
+
+.DS_Store

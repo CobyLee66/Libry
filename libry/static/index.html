@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Libry · 书阁</title>
+  <!-- ?v= 仅用于一次性清理 2026-09-03 之前的旧启发式缓存；此后静态资源以 no-cache 下发，改版无需再 bump -->
+  <link rel="stylesheet" href="/style.css?v=20260903">
+  <link rel="icon" type="image/png" href="/icon.png">
+  <!-- Vue 3.5.41 / d3 7 自托管（webapp/static/vendor/），避免 CDN 在部分网络下不可达导致白屏 -->
+  <script src="/vendor/vue.global.prod.js"></script>
+  <script src="/vendor/d3.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <!-- 加载中 -->
+  <div v-if="view === 'loading'" class="center-box"><p>加载中…</p></div>
+
+  <!-- 登录页 -->
+  <div v-else-if="view === 'login'" class="center-box">
+    <form class="login-card" @submit.prevent="doLogin">
+      <h1>AI知识库</h1>
+      <input type="text" v-model.trim="loginUser" placeholder="用户名" autofocus autocomplete="username">
+      <div class="pw-field">
+        <input :type="show.login ? 'text' : 'password'" v-model="password" placeholder="密码" autocomplete="current-password">
+        <pw-eye :on="show.login" @toggle="show.login = !show.login" />
+      </div>
+      <p v-if="loginError" class="error">{{ loginError }}</p>
+      <button type="submit" :disabled="loggingIn">{{ loggingIn ? '登录中…' : '登录' }}</button>
+    </form>
+  </div>
+
+  <!-- 设置页 -->
+  <div v-else-if="view === 'settings'" class="settings-page">
+    <header class="topbar">
+      <button class="btn" @click="backToList">← 返回</button>
+      <span class="topbar-title">设置</span>
+      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+        <icon name="log-out"></icon>
+      </button>
+    </header>
+    <main class="settings-body">
+      <form class="login-card" @submit.prevent="changePassword">
+        <h1>修改密码</h1>
+        <div class="pw-field">
+          <input :type="show.old ? 'text' : 'password'" v-model="pw.old" placeholder="当前密码" autocomplete="current-password">
+          <pw-eye :on="show.old" @toggle="show.old = !show.old" />
+        </div>
+        <div class="pw-field">
+          <input :type="show.next ? 'text' : 'password'" v-model="pw.next" placeholder="新密码（至少 8 位）" autocomplete="new-password">
+          <pw-eye :on="show.next" @toggle="show.next = !show.next" />
+        </div>
+        <div class="pw-field">
+          <input :type="show.confirm ? 'text' : 'password'" v-model="pw.confirm" placeholder="确认新密码" autocomplete="new-password">
+          <pw-eye :on="show.confirm" @toggle="show.confirm = !show.confirm" />
+        </div>
+        <p v-if="pw.error" class="error">{{ pw.error }}</p>
+        <p v-if="pw.ok" class="ok-msg">密码已修改，下次登录生效</p>
+        <button type="submit" :disabled="pw.changing">{{ pw.changing ? '提交中…' : '确认修改' }}</button>
+      </form>
+
+      <div v-if="user.admin" class="login-card users-card">
+        <h1>账户管理</h1>
+        <div v-for="u in users" :key="u.username" class="user-row">
+          <span class="user-name">{{ u.username }}<span v-if="u.admin" class="admin-badge">管理员</span></span>
+          <button class="btn small-btn" @click="deleteUser(u.username)">删除</button>
+        </div>
+        <div class="add-user">
+          <input type="text" v-model.trim="newUser.name" placeholder="新用户名" autocomplete="off">
+          <div class="pw-field">
+            <input :type="show.add ? 'text' : 'password'" v-model="newUser.password" placeholder="密码（至少 8 位）" autocomplete="new-password">
+            <pw-eye :on="show.add" @toggle="show.add = !show.add" />
+          </div>
+          <label class="admin-check">
+            <input type="checkbox" v-model="newUser.admin"> 管理员
+          </label>
+          <p v-if="newUser.error" class="error">{{ newUser.error }}</p>
+          <button class="btn" @click="addUser" :disabled="newUser.adding">{{ newUser.adding ? '添加中…' : '添加账户' }}</button>
+        </div>
+      </div>
+
+      <div v-if="user.admin" class="login-card sync-card">
+        <h1>数据同步</h1>
+        <p class="sync-desc">统一账户、已读历史与收藏夹到 GitHub，并在本机与 VPS 之间双向同步。</p>
+        <p v-if="syncStatus && syncStatus.last_run" class="ok-msg">
+          上次同步：{{ fmtSyncTs(syncStatus.last_run) }}（{{ fmtSyncResult(syncStatus.result) }}）
+        </p>
+        <p v-if="sync.error" class="error">{{ sync.error }}</p>
+        <button class="btn" @click="triggerSync" :disabled="sync.syncing">
+          {{ sync.syncing ? '同步中…' : '立即同步' }}
+        </button>
+      </div>
+
+      <div v-if="user.admin" class="login-card purge-card">
+        <h1>待删除页面</h1>
+        <p class="sync-desc">在阅读页点删除图标标记的页面，会在下次定时入库时批量删除（同时清理其他页面对它们的引用），也可立即手动执行。</p>
+        <div v-if="deletions.items.length === 0" class="purge-empty">暂无待删除页面</div>
+        <div v-for="d in deletions.items" :key="d.file" class="purge-row">
+          <a class="purge-title" :href="'#/doc/' + encodeURIComponent(d.file)">
+            <span class="type-badge">{{ typeLabel(d.type) }}</span>{{ d.title }}
+            <span v-if="!d.exists" class="purge-stale" title="文件已不在库中，清理时将直接核销标记">已失效</span>
+          </a>
+          <span class="purge-meta">{{ d.marked_by }} · {{ (d.marked_at || '').slice(0, 10) }}</span>
+          <button class="icon-btn" title="取消删除标记" aria-label="取消删除标记"
+                  @click="unmarkDeletion(d.file)">
+            <icon name="x"></icon>
+          </button>
+        </div>
+        <p v-if="purgeStatus && purgeStatus.last_run" class="ok-msg">
+          上次清理：{{ fmtSyncTs(purgeStatus.last_run) }}（{{ fmtPurgeResult(purgeStatus.result) }}<span v-if="purgeStatus.detail"> · {{ purgeStatus.detail }}</span>）
+        </p>
+        <p v-if="purge.error" class="error">{{ purge.error }}</p>
+        <button v-if="deletions.items.length" class="btn btn-danger"
+                @click="executePurge" :disabled="purge.running">
+          {{ purge.running ? '执行中…' : '立即执行删除（' + deletions.items.length + '）' }}
+        </button>
+      </div>
+    </main>
+  </div>
+
+  <!-- 阅读页 -->
+  <div v-else-if="view === 'doc'" class="doc-page">
+    <header class="topbar">
+      <button class="btn" @click="backToList">← 返回</button>
+      <span class="topbar-title">{{ doc ? doc.meta.title : '' }}</span>
+      <button v-if="doc" class="icon-btn"
+              :class="{bookmarked: doc.meta.bookmarked}"
+              :title="doc.meta.bookmarked ? '取消收藏' : '收藏'"
+              :aria-label="doc.meta.bookmarked ? '取消收藏' : '收藏'"
+              @click="toggleBookmark">
+        <icon :name="doc.meta.bookmarked ? 'bookmark-filled' : 'bookmark'"></icon>
+      </button>
+      <button class="icon-btn" v-if="doc" title="标为未读" aria-label="标为未读" @click="markUnread">
+        <icon name="eye-off"></icon>
+      </button>
+      <button v-if="doc && doc.meta.can_toggle" class="icon-btn"
+              :class="{personal: doc.meta.visibility === 'personal'}"
+              :title="doc.meta.visibility === 'personal' ? '设为共享' : '设为个人'"
+              :aria-label="doc.meta.visibility === 'personal' ? '设为共享' : '设为个人'"
+              @click="toggleVisibility">
+        <icon :name="doc.meta.visibility === 'personal' ? 'lock' : 'unlock'"></icon>
+      </button>
+      <button v-if="doc && user.admin" class="icon-btn"
+              :class="{marked: doc.meta.marked_deleted}"
+              :title="doc.meta.marked_deleted ? '取消删除标记' : '标记删除'"
+              :aria-label="doc.meta.marked_deleted ? '取消删除标记' : '标记删除'"
+              @click="toggleDeleteMark">
+        <icon name="trash-2"></icon>
+      </button>
+      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+        <icon name="log-out"></icon>
+      </button>
+    </header>
+    <main class="doc-body" v-if="doc">
+      <div class="doc-meta">
+        <span class="type-badge">{{ typeLabel(doc.meta.type) }}</span>
+        <span v-if="doc.meta.visibility === 'personal'" class="vis-badge"
+              :title="'个人文档' + (doc.meta.owner ? ' · 所有者：' + doc.meta.owner : '')">个人</span>
+        <span v-for="t in doc.meta.tags" :key="t" class="tag-chip small">{{ t }}</span>
+        <span class="dates">创建 {{ doc.meta.created }} · 更新 {{ doc.meta.updated }}</span>
+      </div>
+      <div v-if="doc.meta.marked_deleted" class="marked-banner">
+        本页面已标记待删除，将在下次定时清理时被删除（含其他页面对它的引用）。
+      </div>
+      <article class="markdown-body" v-html="doc.html"></article>
+      <!-- 相关页面：局部关联图（窄屏默认折叠）+ 相关度列表 -->
+      <section v-if="doc.related && doc.related.length" class="related-panel">
+        <div class="related-head">
+          <span class="related-title-head">相关页面</span>
+          <button class="btn small-btn rel-toggle" @click="toggleRelGraph">
+            {{ relGraphOpen ? '收起关联图' : '展开关联图' }}
+          </button>
+        </div>
+        <div :class="['rel-graph-wrap', {open: relGraphOpen}]">
+          <canvas ref="relCanvas"></canvas>
+          <div v-if="relTip.show" class="graph-tip" :style="{left: relTip.x + 'px', top: relTip.y + 'px'}">
+            {{ relTip.text }}
+          </div>
+        </div>
+        <div class="related-list">
+          <a v-for="r in doc.related" :key="r.file" class="related-item"
+             :href="'#/doc/' + encodeURIComponent(r.file)">
+            <span class="related-item-title">{{ r.title }}</span>
+            <span class="type-badge">{{ typeLabel(r.type) }}</span>
+            <span class="related-score">{{ Math.round(r.score * 100) }}%</span>
+          </a>
+        </div>
+      </section>
+      <nav class="doc-nav">
+        <a v-if="doc.prev" :href="'#/doc/' + encodeURIComponent(doc.prev.file)">← {{ doc.prev.title }}</a>
+        <span v-else></span>
+        <a v-if="doc.next" :href="'#/doc/' + encodeURIComponent(doc.next.file)">{{ doc.next.title }} →</a>
+      </nav>
+      <!-- 章节目录：浮动按钮呼出抽屉，移动端不挤占正文 -->
+      <button v-if="toc.length" class="toc-fab" title="目录" aria-label="目录" @click="showToc = true">
+        <icon name="list"></icon>
+      </button>
+      <div v-if="showToc" class="toc-backdrop" @click="showToc = false"></div>
+      <aside v-show="showToc" :class="['toc-drawer', {open: showToc}]">
+        <div class="toc-head">
+          <span>目录</span>
+          <button class="toc-close" @click="showToc = false">×</button>
+        </div>
+        <a v-for="t in toc" :key="t.id" :class="'toc-l' + t.level" @click="jumpTo(t.id)">{{ t.text }}</a>
+      </aside>
+    </main>
+    <div v-else class="center-box"><p>加载中…</p></div>
+  </div>
+
+  <!-- 收藏夹页 -->
+  <div v-else-if="view === 'bookmarks'" class="bookmarks-page">
+    <header class="topbar">
+      <button class="btn" @click="backToList">← 返回</button>
+      <span class="topbar-title">收藏夹</span>
+      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+        <icon name="log-out"></icon>
+      </button>
+    </header>
+
+    <div v-if="bookmarks.facet && Object.keys(bookmarks.facet).length" class="bm-filter">
+      <button :class="['bm-chip', {active: !bmFilterTag}]" @click="setBmFilter('')">
+        全部<span v-if="bookmarks.total" class="badge badge-all">{{ bookmarks.total }}</span>
+      </button>
+      <button v-for="(count, tag) in bookmarks.facet" :key="tag"
+              :class="['bm-chip', {active: bmFilterTag === tag}]"
+              @click="setBmFilter(tag)">
+        {{ tag }}<span class="badge">{{ count }}</span>
+      </button>
+    </div>
+
+    <main class="bm-list">
+      <div v-if="!bmLoading && bookmarks.items.length === 0" class="bm-empty">
+        <icon name="bookmark"></icon>
+        <p>暂无收藏，去文章页点收藏图标试试</p>
+      </div>
+      <div v-for="d in bookmarks.items" :key="d.file" class="bm-item">
+        <a class="bm-item-main" :href="'#/doc/' + encodeURIComponent(d.file)">
+          <div class="bm-item-title">{{ d.title }}</div>
+          <div class="bm-item-meta">
+            <span class="type-badge">{{ typeLabel(d.type) }}</span>
+            <span v-if="d.visibility === 'personal'" class="vis-badge"
+                  :title="'个人文档' + (d.owner ? ' · 所有者：' + d.owner : '')">个人</span>
+            <span class="doc-date">收藏于 {{ (d.added || '').slice(0, 10) }}</span>
+          </div>
+        </a>
+        <div class="bm-item-tags">
+          <span v-for="t in d.bookmark_tags" :key="t" class="tag-chip small">{{ t }}</span>
+          <span class="bm-item-actions">
+            <button class="icon-btn" title="编辑标签" aria-label="编辑标签" @click="editBookmarkTags(d)">
+              <icon name="edit-3"></icon>
+            </button>
+            <button class="icon-btn" title="取消收藏" aria-label="取消收藏" @click="removeBookmark(d.file)">
+              <icon name="trash-2"></icon>
+            </button>
+          </span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 全库图谱页 -->
+  <div v-else-if="view === 'graph'" class="graph-page">
+    <header class="topbar">
+      <button class="btn" @click="backToList">← 返回</button>
+      <span class="topbar-title">知识图谱</span>
+      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+        <icon name="log-out"></icon>
+      </button>
+    </header>
+    <div class="graph-toolbar">
+      <input class="search graph-search" type="search" v-model.trim="gview.q"
+             placeholder="定位节点（回车）…" @keydown.enter="locateGraphNode">
+      <select v-model="gview.tag" @change="drawGlobalGraph">
+        <option value="">全部标签</option>
+        <option v-for="t in allGraphTags" :key="t" :value="t">{{ t }}</option>
+      </select>
+      <label v-for="t in graphTypes" :key="t" class="graph-type-check">
+        <input type="checkbox" v-model="gview.types[t]" @change="drawGlobalGraph"> {{ typeLabel(t) }}
+      </label>
+    </div>
+    <div class="graph-canvas-wrap">
+      <canvas ref="globalCanvas"></canvas>
+      <div v-if="gTip.show" class="graph-tip"
+           :style="{left: gTip.x + 'px', top: gTip.y + 'px'}">{{ gTip.text }}</div>
+      <div class="graph-legend">
+        <span v-for="t in graphTypes" :key="t" class="graph-legend-item">
+          <i class="graph-legend-dot" :data-type="t"></i>{{ typeLabel(t) }}
+        </span>
+      </div>
+      <p v-if="!gview.loading && !gview.edges.length" class="graph-empty">
+        关联图数据未生成。请在本地运行 <code>webapp/build_graph.py</code> 后发布同步。
+      </p>
+    </div>
+  </div>
+
+  <!-- 列表页 -->
+  <div v-else class="list-page">
+    <header class="topbar">
+      <img class="header-logo" src="/icon.png" alt="AI知识库图标">
+      <span class="topbar-title">AI知识库</span>
+      <input class="search" type="search" v-model.trim="filters.q" placeholder="搜索标题 / 摘要…">
+      <button class="icon-btn" title="筛选" aria-label="筛选" @click="showFilters = !showFilters">
+        <icon name="filter"></icon>
+        <span v-if="activeFilterCount" class="icon-badge">{{ activeFilterCount }}</span>
+      </button>
+      <span class="whoami" :title="'当前账户：' + user.name">{{ user.name }}</span>
+      <button class="icon-btn" title="收藏夹" aria-label="收藏夹" @click="openBookmarks">
+        <icon name="bookmark"></icon>
+      </button>
+      <button class="icon-btn" title="知识图谱" aria-label="知识图谱" @click="openGraph">
+        <icon name="share-2"></icon>
+      </button>
+      <button class="icon-btn" title="设置" aria-label="设置" @click="openSettings">
+        <icon name="settings"></icon>
+      </button>
+      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+        <icon name="log-out"></icon>
+      </button>
+    </header>
+
+    <div class="status-tabs">
+      <button v-for="t in statusTabs" :key="t.key"
+              :class="['tab', {active: filters.status === t.key}]"
+              @click="setStatus(t.key)">
+        {{ t.label }}<span :class="['badge', 'badge-' + t.key]" v-if="counts[t.key]">{{ counts[t.key] }}</span>
+      </button>
+    </div>
+
+    <div v-if="showFilters" class="filter-panel">
+      <div class="filter-row">
+        <select v-model="filters.type">
+          <option value="">全部类型</option>
+          <option value="sources">资料</option>
+          <option value="entities">实体</option>
+          <option value="concepts">概念</option>
+          <option value="synthesis">综合</option>
+          <option value="archive">原文</option>
+        </select>
+        <select v-model="filters.visibility" title="按个人/共享筛选">
+          <option value="">全部可见性</option>
+          <option value="shared">共享</option>
+          <option value="personal">个人</option>
+        </select>
+        <input type="date" v-model="filters.date_from" title="创建日期起">
+        <input type="date" v-model="filters.date_to" title="创建日期止">
+        <select v-model="filters.sort">
+          <option value="created">按创建时间</option>
+          <option value="updated">按更新时间</option>
+          <option value="title">按标题</option>
+        </select>
+        <button class="btn" @click="clearFilters">清空筛选</button>
+      </div>
+      <div v-for="(tags, group) in visibleTagGroups" :key="group" class="tag-group">
+        <div class="tag-group-name">{{ group }}</div>
+        <span v-for="t in tags" :key="t"
+              :class="['tag-chip', {on: filters.tags.includes(t)}]"
+              @click="toggleTag(t)">{{ t }}</span>
+      </div>
+    </div>
+
+    <main class="doc-list">
+      <p v-if="!loading && items.length === 0" class="empty">没有匹配的文档</p>
+      <a v-for="d in items" :key="d.file" class="doc-item" :href="'#/doc/' + encodeURIComponent(d.file)">
+        <div class="doc-item-head">
+          <span class="dot new" v-if="d.is_new" title="新增"></span>
+          <span class="dot unread" v-else-if="!d.read" title="未读"></span>
+          <span class="doc-title">{{ d.title }}</span>
+          <span class="doc-date">{{ d.created }}</span>
+        </div>
+        <p class="doc-summary" v-if="d.summary">{{ d.summary }}</p>
+        <div class="doc-item-tags">
+          <span class="type-badge">{{ typeLabel(d.type) }}</span>
+          <span v-if="d.marked_deleted" class="marked-badge" title="已标记待删除">
+            <icon name="trash-2"></icon>
+          </span>
+          <span v-if="d.visibility === 'personal'" class="vis-badge"
+                :title="'个人文档' + (d.owner ? ' · 所有者：' + d.owner : '')">个人</span>
+          <span v-for="t in d.tags" :key="t"
+                :class="['tag-chip', 'small', 'clickable', {on: filters.tags.includes(t)}]"
+                :title="'筛选标签：' + t"
+                @click.prevent.stop="filterByTag(t)">{{ t }}</span>
+          <button class="icon-btn read-toggle"
+                  :class="{'read-on': d.read}"
+                  :title="d.read ? '标为未读' : '标为已读'"
+                  :aria-label="d.read ? '标为未读' : '标为已读'"
+                  @click.prevent.stop="toggleRead(d)">
+            <icon :name="d.read ? 'eye' : 'eye-off'"></icon>
+          </button>
+        </div>
+      </a>
+      <button v-if="items.length < total" class="btn load-more" @click="loadMore" :disabled="loading">
+        {{ loading ? '加载中…' : `加载更多（${items.length}/${total}）` }}
+      </button>
+    </main>
+  </div>
+
+  <!-- 收藏标签编辑弹层（全局，阅读页/收藏夹页共用） -->
+  <div v-if="bmEditor" class="modal-backdrop" @click.self="closeBmEditor"></div>
+  <div v-if="bmEditor" class="tag-editor" role="dialog" aria-modal="true" aria-label="收藏标签">
+    <div class="tag-editor-head">
+      <span class="tag-editor-title">收藏标签</span>
+      <button class="icon-btn" title="关闭" aria-label="关闭" @click="closeBmEditor"><icon name="x"></icon></button>
+    </div>
+    <div class="tag-editor-file" v-if="bmEditor.title">{{ bmEditor.title }}</div>
+    <div class="tag-editor-tags">
+      <span v-for="t in bmEditor.tags" :key="t" class="tag-chip on">
+        {{ t }}<button class="chip-x" title="移除" aria-label="移除标签" @click="removeBmTag(t)">×</button>
+      </span>
+      <input v-model="bmEditor.draft" placeholder="输入标签，回车或逗号添加"
+             @keydown.enter.prevent="addBmTag(bmEditor.draft)"
+             @keydown="handleTagDraft" />
+    </div>
+    <div class="tag-editor-suggest" v-if="bmEditor.suggestions.length">
+      <div class="tag-editor-suggest-name">建议标签</div>
+      <span v-for="t in bmEditor.suggestions" :key="t" class="tag-chip" @click="addBmTag(t)">{{ t }}</span>
+    </div>
+    <div class="tag-editor-actions">
+      <button class="btn" @click="saveBmTags">保存</button>
+      <button class="btn" @click="closeBmEditor">关闭</button>
+    </div>
+  </div>
+
+  <!-- 轻提示 -->
+  <div v-if="toast" class="toast" role="status">{{ toast }}</div>
+</div>
+<script src="/app.js?v=20260903"></script>
+</body>
+</html>

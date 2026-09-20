@@ -1,0 +1,24 @@
+# systemd unit 模板（参考；正式安装由 deploy/install.sh 自动生成）
+# 手动安装：替换 <ENGINE>（引擎仓库路径）与 <VAULT>（知识库路径）后
+#   sudo cp libry-web.service.example /etc/systemd/system/libry-web.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now libry-web
+
+[Unit]
+Description=Libry KB Web (FastAPI/uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=libry
+Environment=KB_ROOT=<VAULT>
+ExecStart=<ENGINE>/.venv/bin/libry serve --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+
+# 基本加固
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd 模板（macOS；参考，正式安装由 deploy/install.sh 自动生成到 ~/Library/LaunchAgents/） -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.libry.web</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>&lt;ENGINE&gt;/.venv/bin/libry</string>
+    <string>serve</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8000</string>
+    <string>--root</string><string>&lt;VAULT&gt;</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>KB_ROOT</key><string>&lt;VAULT&gt;</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>&lt;VAULT&gt;/.libry/libry-web.log</string>
+  <key>StandardErrorPath</key><string>&lt;VAULT&gt;/.libry/libry-web.log</string>
+</dict>
+</plist>

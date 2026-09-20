@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "libry"
+version = "0.1.0"
+description = "Libry（书阁）— AI Agent 维护的个人知识库：markdown vault + FastAPI/Vue 阅读端 + ingest/lint 工作流"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "CobyLee66" }]
+requires-python = ">=3.11"
+keywords = ["knowledge-base", "second-brain", "wiki", "ai-agents", "self-hosted", "zettelkasten"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Topic :: Text Processing :: Markup :: Markdown",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pyyaml>=6.0",
+    "markdown>=3.6",
+    "pymdown-extensions>=10.0",
+    "itsdangerous>=2.1",
+    "bcrypt>=4.1",
+    "nh3>=0.2",
+]
+
+[project.optional-dependencies]
+graph = ["fastembed>=0.8", "numpy>=2.0"]
+dev = ["pytest>=8", "ruff>=0.4"]
+
+[project.scripts]
+libry = "libry.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["libry*"]
+
+[tool.setuptools.package-data]
+libry = ["static/**/*", "templates/**/*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

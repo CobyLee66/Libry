@@ -1,0 +1,21 @@
+# Libry（书阁）Web — Caddy 反代配置模板
+# 把 kb.example.com 替换为你的域名（DNS A 记录指向服务器），Caddy 自动申请证书。
+# 安装：sudo cp Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+
+kb.example.com {
+	reverse_proxy 127.0.0.1:8000
+
+	# 安全响应头
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy same-origin
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+		-Server
+	}
+
+	# 访问日志（可选，配合 fail2ban）
+	log {
+		output file /var/log/caddy/libry.access.log
+	}
+}

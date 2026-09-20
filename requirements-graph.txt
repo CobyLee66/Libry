@@ -1,0 +1,4 @@
+# 关联图构建（可选：仅需要在哪端算图就装在哪端，另一端只读 graph.json）
+# 安装：pip install 'libry[graph]' 或 pip install -r requirements-graph.txt
+fastembed>=0.8
+numpy>=2.0
