@@ -10,8 +10,8 @@ echo "[libry-update] 拉取引擎最新代码…"
 git pull --ff-only
 
 if git diff --name-only HEAD@{1} HEAD 2>/dev/null | grep -qE '^(pyproject\.toml|requirements.*)'; then
-  echo "[libry-update] 依赖变更，重装…"
-  .venv/bin/pip install -U . ${LIBRY_INSTALL_EXTRA:-}
+  echo "[libry-update] 依赖变更，重装（可编辑模式）…"  # 可编辑安装：代码更新后重启即生效，无需重装
+  .venv/bin/pip install -U -e . ${LIBRY_INSTALL_EXTRA:-}
 else
   echo "[libry-update] 依赖无变更，跳过安装"
 fi
