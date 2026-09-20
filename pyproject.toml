@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "libry"
-version = "0.1.0"
+version = "0.2.0"
 description = "Libry（书阁）— AI Agent 维护的个人知识库：markdown vault + FastAPI/Vue 阅读端 + ingest/lint 工作流"
 readme = "README.md"
 license = { text = "MIT" }

@@ -116,7 +116,7 @@ class Auth:
         with self._lock:
             users = self._load_users()
             if username not in users or users[username].get("deleted"):
-                raise HTTPException(status_code=404, detail="用户不存在")
+                raise HTTPException(status_code=404, detail="user_not_found")
             users[username]["password_hash"] = bcrypt.hashpw(
                 new_password.encode(), bcrypt.gensalt()).decode()
             users[username]["updated_at"] = _now()
@@ -126,13 +126,13 @@ class Auth:
         username = username.strip()
         if not username or len(username) > 32 or not all(
                 c.isalnum() or c in "-_." for c in username):
-            raise HTTPException(status_code=400, detail="用户名仅限字母、数字、- _ .")
+            raise HTTPException(status_code=400, detail="bad_username")
         if len(password) < 8:
-            raise HTTPException(status_code=400, detail="密码至少 8 位")
+            raise HTTPException(status_code=400, detail="password_too_short")
         with self._lock:
             users = self._load_users()
             if username in users and not users[username].get("deleted"):
-                raise HTTPException(status_code=400, detail="用户名已存在")
+                raise HTTPException(status_code=400, detail="user_exists")
             users[username] = {
                 "password_hash": bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
                 "admin": bool(admin),
@@ -144,12 +144,12 @@ class Auth:
         with self._lock:
             users = self._load_users()
             if username not in users or users[username].get("deleted"):
-                raise HTTPException(status_code=404, detail="用户不存在")
+                raise HTTPException(status_code=404, detail="user_not_found")
             if username == by_user:
-                raise HTTPException(status_code=400, detail="不能删除当前登录账户")
+                raise HTTPException(status_code=400, detail="cannot_delete_self")
             if users[username].get("admin") and \
                     sum(1 for u in users.values() if u.get("admin")) <= 1:
-                raise HTTPException(status_code=400, detail="不能删除唯一的管理员")
+                raise HTTPException(status_code=400, detail="cannot_delete_last_admin")
             users[username] = {"deleted": _now()}  # 墓碑：跨端同步不复活已删账户
             self._save_users(users)
 
@@ -191,7 +191,7 @@ def make_session_dependency(auth: Auth):
     def require_session(request: Request) -> str:
         user = auth.current_user(request)
         if not user:
-            raise HTTPException(status_code=401, detail="未登录或会话已过期")
+            raise HTTPException(status_code=401, detail="auth_required")
         return user
     return require_session
 
@@ -201,8 +201,8 @@ def make_admin_dependency(auth: Auth):
     def require_admin(request: Request) -> str:
         user = auth.current_user(request)
         if not user:
-            raise HTTPException(status_code=401, detail="未登录或会话已过期")
+            raise HTTPException(status_code=401, detail="auth_required")
         if not auth.is_admin(user):
-            raise HTTPException(status_code=403, detail="需要管理员权限")
+            raise HTTPException(status_code=403, detail="admin_required")
         return user
     return require_admin

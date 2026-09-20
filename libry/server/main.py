@@ -195,12 +195,12 @@ def status_of(d, read_set, since):
 async def login(request: Request, response: Response):
     ip = client_ip(request)
     if not auth.login_limiter.allow(ip):
-        raise HTTPException(status_code=429, detail="尝试过于频繁，请稍后再试")
+        raise HTTPException(status_code=429, detail="rate_limited")
     body = await request.json()
     username = str(body.get("username", "")).strip()
     password = str(body.get("password", ""))
     if not auth.verify(username, password):
-        raise HTTPException(status_code=401, detail="用户名或密码错误")
+        raise HTTPException(status_code=401, detail="invalid_credentials")
     auth.issue_session(response, username)
     state.on_login(username)
     return {"ok": True, "username": username, "admin": auth.is_admin(username)}
@@ -227,14 +227,14 @@ async def change_password(request: Request, user: str = Depends(require_session)
     """设置页修改自己的密码：校验当前密码（限速），新哈希写入 users.json。"""
     ip = client_ip(request)
     if not auth.login_limiter.allow(ip):
-        raise HTTPException(status_code=429, detail="尝试过于频繁，请稍后再试")
+        raise HTTPException(status_code=429, detail="rate_limited")
     body = await request.json()
     old_password = str(body.get("old_password", ""))
     new_password = str(body.get("new_password", ""))
     if not auth.verify(user, old_password):
-        raise HTTPException(status_code=401, detail="当前密码错误")
+        raise HTTPException(status_code=401, detail="current_password_wrong")
     if len(new_password) < 8:
-        raise HTTPException(status_code=400, detail="新密码至少 8 位")
+        raise HTTPException(status_code=400, detail="password_too_short")
     auth.set_password(user, new_password)
     return {"ok": True}
 
@@ -348,12 +348,12 @@ async def list_docs(q: str = "", tags: str = "", type: str = "",
 async def get_doc(file: str, user: str = Depends(require_session)):
     d = doc_by_file(file)
     if not d:
-        raise HTTPException(status_code=404, detail="文档不存在")
+        raise HTTPException(status_code=404, detail="doc_not_found")
     if not can_see(user, d):
-        raise HTTPException(status_code=404, detail="文档不存在")  # 个人文档对无权者与不存在不可区分
+        raise HTTPException(status_code=404, detail="doc_not_found")  # 个人文档对无权者与不存在不可区分
     md_path = KB_ROOT / file
     if not md_path.exists():
-        raise HTTPException(status_code=404, detail="文件不存在")
+        raise HTTPException(status_code=404, detail="file_not_found")
     html = render_document(md_path, _link_map, KB_ROOT, set(_doc_map))
 
     # 上一篇/下一篇：按 created 在当前用户可见的文档内排序
@@ -407,9 +407,9 @@ async def graph(file: str = "", user: str = Depends(require_session)):
 
     if file:
         if not doc_by_file(file):
-            raise HTTPException(status_code=404, detail="文档不存在")
+            raise HTTPException(status_code=404, detail="doc_not_found")
         if not visible(file):
-            raise HTTPException(status_code=404, detail="文档不存在")
+            raise HTTPException(status_code=404, detail="doc_not_found")
         neighbors = [r["file"] for r in g.get("related", {}).get(file, []) if visible(r["file"])]
         nodes = {file: _graph_node(file)}
         for f in neighbors:
@@ -441,7 +441,7 @@ async def _files_body(request: Request, user: str):
     body = await request.json()
     files = body.get("files") or []
     if not isinstance(files, list):
-        raise HTTPException(status_code=400, detail="files 必须是数组")
+        raise HTTPException(status_code=400, detail="files_not_list")
     valid = {d["file"] for d in get_docs()["docs"] if can_see(user, d)}
     return [f for f in files if f in valid]
 
@@ -472,7 +472,7 @@ def _valid_file(file: str, user: str):
     """校验 file 在索引中且当前用户可见，否则抛 404。"""
     d = doc_by_file(file)
     if not d or not can_see(user, d):
-        raise HTTPException(status_code=404, detail="文档不存在")
+        raise HTTPException(status_code=404, detail="doc_not_found")
     return file
 
 
@@ -510,7 +510,7 @@ async def update_bookmark_tags(request: Request, user: str = Depends(require_ses
     file = _valid_file(str(body.get("file", "")), user)
     entry = bookmarks.set_tags(user, file, body.get("tags") or [])
     if entry is None:
-        raise HTTPException(status_code=404, detail="尚未收藏该文档")
+        raise HTTPException(status_code=404, detail="not_bookmarked")
     return {"ok": True, "bookmark_tags": entry["tags"]}
 
 
@@ -533,7 +533,7 @@ async def set_visibility(request: Request, user: str = Depends(require_session))
     file = _valid_file(str(body.get("file", "")), user)
     target = str(body.get("visibility", "")).strip().lower()
     if target not in ("shared", "personal"):
-        raise HTTPException(status_code=400, detail="visibility 必须是 shared 或 personal")
+        raise HTTPException(status_code=400, detail="bad_visibility")
     entry = visibility.set(file, target, owner=user)
     return {"ok": True, "file": file, "visibility": entry["visibility"], "owner": entry["owner"]}
 
@@ -543,12 +543,22 @@ async def set_visibility(request: Request, user: str = Depends(require_session))
 PURGE_STATUS_PATH = DATA_DIR / "purge-status.json"
 
 
-def _write_purge_status(result: str, detail: str = "", report: dict = None):
+def _write_purge_status(result: str, detail: str = "", report: dict = None,
+                        pages: int = 0, refs: int = 0):
+    """ok 时写结构化 pages/refs（前端按界面语言格式化，不再持久化自然语言文案）；
+    error 时 detail 存原始诊断输出（stderr 等），由前端原样透出。"""
     try:
-        PURGE_STATUS_PATH.write_text(json.dumps({
+        payload = {
             "last_run": datetime.now(timezone.utc).isoformat(),
-            "result": result, "detail": detail, "report": report,
-        }, ensure_ascii=False, indent=1), encoding="utf-8")
+            "result": result, "report": report,
+        }
+        if result == "ok":
+            payload["pages"] = pages
+            payload["refs"] = refs
+        elif detail:
+            payload["detail"] = detail
+        PURGE_STATUS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=1),
+                                     encoding="utf-8")
     except OSError:
         pass
 
@@ -582,7 +592,7 @@ def _run_purge():
                                 report)
             return
         if not report.get("deleted") and not report.get("reconciled"):
-            _write_purge_status("empty", "没有待删除页面", report)
+            _write_purge_status("empty", report=report)
             return
         publish_script = ENGINE_ROOT / "deploy" / "publish.sh"
         if is_primary and report.get("deleted") and publish_script.exists():
@@ -591,7 +601,7 @@ def _run_purge():
                                 capture_output=True, text=True, timeout=1800, env=env)
             if pb.returncode != 0:
                 _write_purge_status("error",
-                                    "publish.sh 失败: " + (pb.stderr or pb.stdout).strip()[-300:],
+                                    "publish.sh: " + (pb.stderr or pb.stdout).strip()[-300:],
                                     report)
                 return
         # 推送 deletions.json 的 purged 终态（两端同一通道）
@@ -602,7 +612,7 @@ def _run_purge():
         deletions.reload()
         n = len(report.get("deleted") or [])
         m = sum((report.get("refs_cleaned") or {}).values())
-        _write_purge_status("ok", f"删除 {n} 个页面，清理引用 {m} 处", report)
+        _write_purge_status("ok", report=report, pages=n, refs=m)
     except Exception as e:
         _write_purge_status("error", str(e)[:300])
 
@@ -648,7 +658,7 @@ async def execute_purge(request: Request, background_tasks: BackgroundTasks,
     """手动触发批量删除（管理员）：后台跑清理管道，立即 202；结果查 /api/deletions/status。"""
     ip = client_ip(request)
     if not purge_limiter.allow(ip):
-        raise HTTPException(status_code=429, detail="操作过于频繁，请稍后再试")
+        raise HTTPException(status_code=429, detail="rate_limited")
     background_tasks.add_task(_run_purge)
     return JSONResponse({"ok": True, "message": "purge started"}, status_code=202)
 
@@ -667,7 +677,7 @@ async def purge_status(user: str = Depends(require_session)):
 
 def _check_sync_secret(request: Request):
     if not SYNC_SECRET or request.headers.get("X-Sync-Secret") != SYNC_SECRET:
-        raise HTTPException(status_code=403, detail="无效的 X-Sync-Secret")
+        raise HTTPException(status_code=403, detail="invalid_sync_secret")
 
 
 @app.post("/api/reindex")
@@ -691,7 +701,7 @@ async def sync(request: Request, background_tasks: BackgroundTasks):
     _check_sync_secret(request)
     ip = client_ip(request)
     if not sync_limiter.allow(ip):
-        raise HTTPException(status_code=429, detail="同步请求过于频繁")
+        raise HTTPException(status_code=429, detail="rate_limited")
     background_tasks.add_task(_run_sync)
     return JSONResponse({"ok": True, "message": "sync started"}, status_code=202)
 
@@ -717,7 +727,7 @@ async def sync_data(request: Request, background_tasks: BackgroundTasks,
     """手动同步用户数据（管理员）：后台跑 sync_data，立即返回 202。"""
     ip = client_ip(request)
     if not data_sync_limiter.allow(ip):
-        raise HTTPException(status_code=429, detail="同步请求过于频繁")
+        raise HTTPException(status_code=429, detail="rate_limited")
     background_tasks.add_task(_run_data_sync)
     return JSONResponse({"ok": True, "message": "data sync started"}, status_code=202)
 

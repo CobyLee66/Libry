@@ -2,6 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [0.2.0] - 2026-09-21
+
+### 界面国际化（i18n）
+- Web 端支持中英双语：`libry/static/i18n/`（手写轻量运行时，无新增依赖、无构建）。默认按浏览器语言自动检测（`zh*` → 中文，其余回退 English）；登录卡与设置页的语言下拉可手动切换（不占顶栏空间），持久化到 `localStorage['kb-lang']`
+- 为后续语言打好基础：新增语言 = 加一个字典文件 + `index.html` 一行 `<script>` + `i18n/core.js` 的 `detect()` 一处映射；`t()` 支持 `{name}` 插值与 `{one, other}` 复数（`Intl.PluralRules`）
+- 新增 `tests/test_i18n.py`：各语言 key 集合一致性、模板/JS 引用漏键、字典文件挂载检查
+
+### API 行为变更（BREAKING）
+- `HTTPException` 的 `detail` 由中文文案改为稳定错误码（snake_case，如 `invalid_credentials`），完整清单见 `docs/api.md`；脚本消费者请按错误码判断，不要解析自然语言文案
+- `GET /api/deletions/status`（`.libry/purge-status.json`）：`ok` 结果新增结构化 `pages`（删除页数）/`refs`（清理引用数）字段，不再写自然语言 `detail`；`error` 的 `detail` 改存原始诊断输出（如 `publish.sh: <stderr>`），由前端原样透出
+
 ## [0.1.0] - 2026-09-20
 
 首个公开版本。

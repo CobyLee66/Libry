@@ -1,5 +1,6 @@
 /* Libry（书阁）知识库 Web 前端 — Vue 3（自托管）单页应用，无构建步骤。
-   路由：#/login、#/list?<query>、#/doc/<urlencoded file> */
+   路由：#/login、#/list?<query>、#/doc/<urlencoded file>
+   界面文案一律经 i18n/core.js（window.LibryI18n）的 t() 取用，不在模板/代码里硬编码。 */
 (function () {
   const { createApp } = Vue;
 
@@ -9,8 +10,8 @@
     emits: ['toggle'],
     template: `
       <button type="button" class="pw-toggle"
-              :title="on ? '隐藏密码' : '显示密码'"
-              :aria-label="on ? '隐藏密码' : '显示密码'"
+              :title="on ? t('pw.hide') : t('pw.show')"
+              :aria-label="on ? t('pw.hide') : t('pw.show')"
               @click="$emit('toggle')">
         <svg v-if="!on" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -22,6 +23,9 @@
           <line x1="1" y1="1" x2="23" y2="23"/>
         </svg>
       </button>`,
+    methods: {
+      t(key, params) { return LibryI18n.t(key, params); },
+    },
   };
 
   /* 通用 Feather 风格图标（与 EyeIcon 同源，stroke=currentColor） */
@@ -67,8 +71,12 @@
       throw new Error('unauthorized');
     }
     if (!res.ok) {
-      let msg = '请求失败 (' + res.status + ')';
-      try { msg = (await res.json()).detail || msg; } catch (e) { /* ignore */ }
+      let msg = LibryI18n.t('err.requestFailed', { status: res.status });
+      try {
+        const d = (await res.json()).detail;
+        // 服务端错误码（见 docs/api.md）映射为当前语言文案；未识别的 detail 原样显示（兼容旧版/动态消息）
+        if (d) msg = LibryI18n.has('api.' + d) ? LibryI18n.t('api.' + d) : d;
+      } catch (e) { /* ignore */ }
       throw new Error(msg);
     }
     return res.json();
@@ -89,13 +97,8 @@
     };
   }
 
-  /* 界面中文化映射（底层值保持英文目录名/状态码不变） */
-  const TYPE_LABELS = { sources: '资料', entities: '实体', concepts: '概念', synthesis: '综合', archive: '原文' };
-  const SYNC_RESULT_LABELS = {
-    pushed: '已推送', 'no changes': '无变更', 'dry-run': '试运行',
-    skipped: '已跳过', error: '失败', never: '从未',
-  };
-  const PURGE_RESULT_LABELS = { ok: '完成', empty: '无待删除', error: '失败', never: '从未' };
+  /* 展示层标签（类型/同步/清理结果）经 i18n 字典翻译（type.* / syncResult.* / purgeResult.*），
+     底层值保持英文目录名/状态码不变 */
 
   const app = createApp({
     data() {
@@ -135,16 +138,23 @@
         },
         gTip: { show: false, x: 0, y: 0, text: '' },
         _gsim: null, _gdraw: null, _gt: null, _glocated: '',
-        statusTabs: [
-          { key: 'all', label: '全部' },
-          { key: 'new', label: '新增' },
-          { key: 'unread', label: '未读' },
-          { key: 'read', label: '已读' },
-        ],
         _debounce: null,
       };
     },
     computed: {
+      /* 语言切换器：v-model 代理到 LibryI18n（手动 setLang 才写 localStorage） */
+      lang: {
+        get() { return LibryI18n.state.lang; },
+        set(v) { LibryI18n.setLang(v); },
+      },
+      langs() { return LibryI18n.langs(); },
+      statusTabs() {
+        return ['all', 'new', 'unread', 'read'].map((key) => ({ key, label: this.t('status.' + key) }));
+      },
+      /* 设置页「上次清理」补充文案：ok 用结构化页数/引用数格式化，error 透出诊断 detail */
+      purgeDetailText() {
+        return this.fmtPurgeDetail(this.purgeStatus);
+      },
       visibleTagGroups() {
         if (!this.meta) return {};
         const groups = {};
@@ -187,12 +197,16 @@
     methods: {
       encodeURIComponent,
 
-      typeLabel(t) {
-        return TYPE_LABELS[t] || t;
+      t(key, params) {
+        return LibryI18n.t(key, params);
+      },
+
+      typeLabel(ty) {
+        return LibryI18n.has('type.' + ty) ? LibryI18n.t('type.' + ty) : ty;
       },
 
       fmtSyncResult(r) {
-        return SYNC_RESULT_LABELS[r] || r;
+        return LibryI18n.has('syncResult.' + r) ? LibryI18n.t('syncResult.' + r) : r;
       },
 
       async route() {
@@ -259,7 +273,7 @@
           await this.loadMeta();
           await this.reloadList(false);
         } catch (e) {
-          this.loginError = e.message === 'unauthorized' ? '用户名或密码错误' : e.message;
+          this.loginError = e.message === 'unauthorized' ? this.t('err.invalidCredentials') : e.message;
         } finally {
           this.loggingIn = false;
         }
@@ -380,22 +394,32 @@
         this.sync.syncing = true;
         try {
           await api('/api/sync-data', { method: 'POST' });
-          this.showToast('已触发数据同步');
+          this.showToast(this.t('sync.started'));
           setTimeout(() => this.loadSyncStatus(), 3000);
         } catch (e) {
-          this.sync.error = e.message === 'unauthorized' ? '需要管理员权限' : e.message;
+          this.sync.error = e.message === 'unauthorized' ? this.t('err.adminRequired') : e.message;
         } finally {
           this.sync.syncing = false;
         }
       },
 
       fmtSyncTs(ts) {
-        if (!ts) return '从未';
+        if (!ts) return LibryI18n.t('common.never');
         return String(ts).slice(0, 16).replace('T', ' ');
       },
 
       fmtPurgeResult(r) {
-        return PURGE_RESULT_LABELS[r] || r;
+        return LibryI18n.has('purgeResult.' + r) ? LibryI18n.t('purgeResult.' + r) : r;
+      },
+
+      fmtPurgeDetail(st) {
+        if (!st) return '';
+        if (st.result === 'ok') {
+          if (typeof st.pages === 'number') return this.t('purge.okSummary', { pages: st.pages, refs: st.refs || 0 });
+          return st.detail || this.t('purge.done');  // 旧版状态文件仅有中文 detail
+        }
+        if (st.result === 'error') return st.detail || this.t('purge.failed');
+        return st.detail || '';
       },
 
       // ---------------- 待删除标记（管理员） ----------------
@@ -420,14 +444,14 @@
           try {
             await api('/api/deletions', { method: 'DELETE', body: { file } });
             this.doc.meta.marked_deleted = false;
-            this.showToast('已取消删除标记');
+            this.showToast(this.t('doc.unmarkedToast'));
           } catch (e) { this.showToast(e.message); }
         } else {
-          if (!confirm('标记后将在下次定时清理时删除该页面（含其他页面对它的引用）。确定标记？')) return;
+          if (!confirm(this.t('doc.markConfirm'))) return;
           try {
             await api('/api/deletions', { method: 'POST', body: { file } });
             this.doc.meta.marked_deleted = true;
-            this.showToast('已标记待删除');
+            this.showToast(this.t('doc.markedToast'));
           } catch (e) { this.showToast(e.message); }
         }
       },
@@ -435,14 +459,14 @@
       async unmarkDeletion(file) {
         try {
           await api('/api/deletions', { method: 'DELETE', body: { file } });
-          this.showToast('已取消删除标记');
+          this.showToast(this.t('doc.unmarkedToast'));
           await this.loadDeletions();
         } catch (e) { this.showToast(e.message); }
       },
 
       async executePurge() {
         if (!this.deletions.items.length) return;
-        if (!confirm(`确定立即删除这 ${this.deletions.items.length} 个标记页面？\n将删除文件并清理其他页面对它们的引用，变更会提交推送到 GitHub，不可撤销。`)) return;
+        if (!confirm(this.t('purge.confirm', { n: this.deletions.items.length }))) return;
         this.purge.error = '';
         this.purge.running = true;
         const startedAt = new Date();
@@ -455,15 +479,15 @@
             this.purgeStatus = st;
             if (st.last_run && new Date(st.last_run) >= startedAt) {
               if (st.result === 'ok' || st.result === 'empty') {
-                this.showToast(st.detail || '清理完成');
+                this.showToast(this.fmtPurgeDetail(st) || this.t('purge.done'));
               } else {
-                this.purge.error = st.detail || '清理失败';
+                this.purge.error = this.fmtPurgeDetail(st) || this.t('purge.failed');
               }
               break;
             }
           }
         } catch (e) {
-          this.purge.error = e.message === 'unauthorized' ? '需要管理员权限' : e.message;
+          this.purge.error = e.message === 'unauthorized' ? this.t('err.adminRequired') : e.message;
         } finally {
           this.purge.running = false;
           await this.loadDeletions();
@@ -480,8 +504,8 @@
 
       async addUser() {
         this.newUser.error = '';
-        if (!this.newUser.name) { this.newUser.error = '请输入用户名'; return; }
-        if (this.newUser.password.length < 8) { this.newUser.error = '密码至少 8 位'; return; }
+        if (!this.newUser.name) { this.newUser.error = this.t('users.nameRequired'); return; }
+        if (this.newUser.password.length < 8) { this.newUser.error = this.t('users.passwordShort'); return; }
         this.newUser.adding = true;
         try {
           const data = await api('/api/users', {
@@ -498,7 +522,7 @@
       },
 
       async deleteUser(username) {
-        if (!confirm(`确定删除账户「${username}」？其阅读状态会保留但无法再登录。`)) return;
+        if (!confirm(this.t('users.deleteConfirm', { name: username }))) return;
         try {
           const data = await api('/api/users/' + encodeURIComponent(username), { method: 'DELETE' });
           this.users = data.users;
@@ -509,8 +533,8 @@
 
       async changePassword() {
         this.pw.error = ''; this.pw.ok = false;
-        if (this.pw.next.length < 8) { this.pw.error = '新密码至少 8 位'; return; }
-        if (this.pw.next !== this.pw.confirm) { this.pw.error = '两次输入的新密码不一致'; return; }
+        if (this.pw.next.length < 8) { this.pw.error = this.t('pwChange.tooShort'); return; }
+        if (this.pw.next !== this.pw.confirm) { this.pw.error = this.t('pwChange.mismatch'); return; }
         this.pw.changing = true;
         try {
           await api('/api/password', {
@@ -520,7 +544,7 @@
           this.pw.ok = true;
           this.pw.old = this.pw.next = this.pw.confirm = '';
         } catch (e) {
-          this.pw.error = e.message === 'unauthorized' ? '当前密码错误' : e.message;
+          this.pw.error = e.message === 'unauthorized' ? this.t('api.current_password_wrong') : e.message;
         } finally {
           this.pw.changing = false;
         }
@@ -621,7 +645,7 @@
             await api('/api/bookmarks', { method: 'DELETE', body: { file } });
             this.doc.meta.bookmarked = false;
             this.doc.bookmark_tags = [];
-            this.showToast('已取消收藏');
+            this.showToast(this.t('bm.removedToast'));
           } catch (e) { this.showToast(e.message); }
         } else {
           try {
@@ -645,7 +669,7 @@
           });
           this.doc.meta.visibility = res.visibility;
           this.doc.meta.owner = res.owner;
-          this.showToast(res.visibility === 'personal' ? '已设为个人文档' : '已设为共享文档');
+          this.showToast(res.visibility === 'personal' ? this.t('doc.nowPersonal') : this.t('doc.nowShared'));
         } catch (e) { this.showToast(e.message); }
       },
 
@@ -696,7 +720,7 @@
           const res = await api('/api/bookmarks', { method: 'PUT', body: { file, tags } });
           if (this.doc && this.doc.meta.file === file) this.doc.bookmark_tags = res.bookmark_tags;
           this.bmEditor = null;
-          this.showToast('标签已保存');
+          this.showToast(this.t('bm.tagsSaved'));
           if (this.view === 'bookmarks') await this.loadBookmarks();
         } catch (e) { this.showToast(e.message); }
       },
@@ -708,7 +732,7 @@
             this.doc.meta.bookmarked = false;
             this.doc.bookmark_tags = [];
           }
-          this.showToast('已取消收藏');
+          this.showToast(this.t('bm.removedToast'));
           await this.loadBookmarks(); // 刷新列表与 facet
         } catch (e) { this.showToast(e.message); }
       },
@@ -978,7 +1002,7 @@
           canvas.style.cursor = n ? 'pointer' : 'default';
           this.gTip = n && this.graphNodeVisible(n)
             ? { show: true, x: ev.clientX - r.left + 12, y: ev.clientY - r.top - 10,
-                text: n.title + '（' + this.typeLabel(n.type) + '）' }
+                text: this.t('graph.tooltip', { title: n.title, type: this.typeLabel(n.type) }) }
             : { show: false, x: 0, y: 0, text: '' };
         };
         canvas.onmouseleave = () => { this.gTip = { show: false, x: 0, y: 0, text: '' }; };
@@ -994,7 +1018,7 @@
         const q = (this.gview.q || '').toLowerCase();
         if (!q || !this._gsim || !this._gzoom) return;
         const n = (this._gnodes || []).find(x => x.title.toLowerCase().includes(q));
-        if (!n) { this.showToast('未找到匹配节点'); return; }
+        if (!n) { this.showToast(this.t('graph.notFound')); return; }
         this._glocated = n.file;
         const { sel, zoom, W, H } = this._gzoom;
         const k = Math.max(this._gt.k, 2);

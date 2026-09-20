@@ -4,6 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Libry · 书阁</title>
+  <!-- 首帧前预设界面语言（i18n/core.js 检测逻辑的简化副本，避免非中文环境闪现中文） -->
+  <script>
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem('kb-lang'); } catch (e) {}
+      var zh = saved === 'zh-CN' || (!saved && (navigator.languages || [navigator.language || ''])
+        .some(function (l) { return /^zh/i.test(l); }));
+      document.documentElement.lang = zh ? 'zh-CN' : 'en';
+      document.title = zh ? 'Libry · 书阁' : 'Libry';
+    })();
+  </script>
   <!-- ?v= 仅用于一次性清理 2026-09-03 之前的旧启发式缓存；此后静态资源以 no-cache 下发，改版无需再 bump -->
   <link rel="stylesheet" href="/style.css?v=20260903">
   <link rel="icon" type="image/png" href="/icon.png">
@@ -11,110 +22,123 @@
   <!-- Vue 3.5.41 / d3 7 自托管（libry/static/vendor/），避免 CDN 在部分网络下不可达导致白屏 -->
   <script src="/vendor/vue.global.prod.js"></script>
   <script src="/vendor/d3.min.js"></script>
+  <!-- 界面文案字典 + i18n 运行时（新增语言：加字典文件 + 此处加一行 script，见 docs/frontend-style.md） -->
+  <script src="/i18n/zh-CN.js"></script>
+  <script src="/i18n/en.js"></script>
+  <script src="/i18n/core.js"></script>
 </head>
 <body>
 <div id="app">
   <!-- 加载中 -->
-  <div v-if="view === 'loading'" class="center-box"><p>加载中…</p></div>
+  <div v-if="view === 'loading'" class="center-box"><p>{{ t('common.loading') }}</p></div>
 
   <!-- 登录页 -->
   <div v-else-if="view === 'login'" class="center-box">
     <form class="login-card" @submit.prevent="doLogin">
-      <img class="login-logo" src="/icon.png" alt="书阁图标">
-      <h1>书阁</h1>
-      <input type="text" v-model.trim="loginUser" placeholder="用户名" autofocus autocomplete="username">
+      <img class="login-logo" src="/icon.png" :alt="t('app.logoAlt')">
+      <h1>{{ t('app.brand') }}</h1>
+      <input type="text" v-model.trim="loginUser" :placeholder="t('login.username')" autofocus autocomplete="username">
       <div class="pw-field">
-        <input :type="show.login ? 'text' : 'password'" v-model="password" placeholder="密码" autocomplete="current-password">
+        <input :type="show.login ? 'text' : 'password'" v-model="password" :placeholder="t('login.password')" autocomplete="current-password">
         <pw-eye :on="show.login" @toggle="show.login = !show.login" />
       </div>
       <p v-if="loginError" class="error">{{ loginError }}</p>
-      <button type="submit" :disabled="loggingIn">{{ loggingIn ? '登录中…' : '登录' }}</button>
+      <button type="submit" :disabled="loggingIn">{{ loggingIn ? t('login.submitting') : t('login.submit') }}</button>
+      <select class="lang-select lang-select-login" v-model="lang" :title="t('common.language')" :aria-label="t('common.language')">
+        <option v-for="l in langs" :key="l.code" :value="l.code">{{ l.name }}</option>
+      </select>
     </form>
   </div>
 
   <!-- 设置页 -->
   <div v-else-if="view === 'settings'" class="settings-page">
     <header class="topbar">
-      <button class="btn" @click="backToList">← 返回</button>
-      <span class="topbar-title">设置</span>
-      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+      <button class="btn" @click="backToList">{{ t('common.back') }}</button>
+      <span class="topbar-title">{{ t('settings.title') }}</span>
+      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
         <icon name="log-out"></icon>
       </button>
     </header>
     <main class="settings-body">
+      <div class="login-card lang-card">
+        <h1>{{ t('common.language') }}</h1>
+        <select class="lang-select" v-model="lang" :title="t('common.language')" :aria-label="t('common.language')">
+          <option v-for="l in langs" :key="l.code" :value="l.code">{{ l.name }}</option>
+        </select>
+      </div>
       <form class="login-card" @submit.prevent="changePassword">
-        <h1>修改密码</h1>
+        <h1>{{ t('pwChange.title') }}</h1>
         <div class="pw-field">
-          <input :type="show.old ? 'text' : 'password'" v-model="pw.old" placeholder="当前密码" autocomplete="current-password">
+          <input :type="show.old ? 'text' : 'password'" v-model="pw.old" :placeholder="t('pwChange.oldPlaceholder')" autocomplete="current-password">
           <pw-eye :on="show.old" @toggle="show.old = !show.old" />
         </div>
         <div class="pw-field">
-          <input :type="show.next ? 'text' : 'password'" v-model="pw.next" placeholder="新密码（至少 8 位）" autocomplete="new-password">
+          <input :type="show.next ? 'text' : 'password'" v-model="pw.next" :placeholder="t('pwChange.newPlaceholder')" autocomplete="new-password">
           <pw-eye :on="show.next" @toggle="show.next = !show.next" />
         </div>
         <div class="pw-field">
-          <input :type="show.confirm ? 'text' : 'password'" v-model="pw.confirm" placeholder="确认新密码" autocomplete="new-password">
+          <input :type="show.confirm ? 'text' : 'password'" v-model="pw.confirm" :placeholder="t('pwChange.confirmPlaceholder')" autocomplete="new-password">
           <pw-eye :on="show.confirm" @toggle="show.confirm = !show.confirm" />
         </div>
         <p v-if="pw.error" class="error">{{ pw.error }}</p>
-        <p v-if="pw.ok" class="ok-msg">密码已修改，下次登录生效</p>
-        <button type="submit" :disabled="pw.changing">{{ pw.changing ? '提交中…' : '确认修改' }}</button>
+        <p v-if="pw.ok" class="ok-msg">{{ t('pwChange.ok') }}</p>
+        <button type="submit" :disabled="pw.changing">{{ pw.changing ? t('pwChange.submitting') : t('pwChange.submit') }}</button>
       </form>
 
       <div v-if="user.admin" class="login-card users-card">
-        <h1>账户管理</h1>
+        <h1>{{ t('users.title') }}</h1>
         <div v-for="u in users" :key="u.username" class="user-row">
-          <span class="user-name">{{ u.username }}<span v-if="u.admin" class="admin-badge">管理员</span></span>
-          <button class="btn small-btn" @click="deleteUser(u.username)">删除</button>
+          <span class="user-name">{{ u.username }}<span v-if="u.admin" class="admin-badge">{{ t('common.admin') }}</span></span>
+          <button class="btn small-btn" @click="deleteUser(u.username)">{{ t('users.delete') }}</button>
         </div>
         <div class="add-user">
-          <input type="text" v-model.trim="newUser.name" placeholder="新用户名" autocomplete="off">
+          <input type="text" v-model.trim="newUser.name" :placeholder="t('users.namePlaceholder')" autocomplete="off">
           <div class="pw-field">
-            <input :type="show.add ? 'text' : 'password'" v-model="newUser.password" placeholder="密码（至少 8 位）" autocomplete="new-password">
+            <input :type="show.add ? 'text' : 'password'" v-model="newUser.password" :placeholder="t('users.passwordPlaceholder')" autocomplete="new-password">
             <pw-eye :on="show.add" @toggle="show.add = !show.add" />
           </div>
           <label class="admin-check">
-            <input type="checkbox" v-model="newUser.admin"> 管理员
+            <input type="checkbox" v-model="newUser.admin"> {{ t('common.admin') }}
           </label>
           <p v-if="newUser.error" class="error">{{ newUser.error }}</p>
-          <button class="btn" @click="addUser" :disabled="newUser.adding">{{ newUser.adding ? '添加中…' : '添加账户' }}</button>
+          <button class="btn" @click="addUser" :disabled="newUser.adding">{{ newUser.adding ? t('users.adding') : t('users.add') }}</button>
         </div>
       </div>
 
       <div v-if="user.admin" class="login-card sync-card">
-        <h1>数据同步</h1>
-        <p class="sync-desc">统一账户、已读历史与收藏夹到 GitHub，并在本机与 VPS 之间双向同步。</p>
+        <h1>{{ t('sync.title') }}</h1>
+        <p class="sync-desc">{{ t('sync.desc') }}</p>
         <p v-if="syncStatus && syncStatus.last_run" class="ok-msg">
-          上次同步：{{ fmtSyncTs(syncStatus.last_run) }}（{{ fmtSyncResult(syncStatus.result) }}）
+          {{ t('sync.lastRun', { ts: fmtSyncTs(syncStatus.last_run), result: fmtSyncResult(syncStatus.result) }) }}
         </p>
         <p v-if="sync.error" class="error">{{ sync.error }}</p>
         <button class="btn" @click="triggerSync" :disabled="sync.syncing">
-          {{ sync.syncing ? '同步中…' : '立即同步' }}
+          {{ sync.syncing ? t('sync.syncing') : t('sync.trigger') }}
         </button>
       </div>
 
       <div v-if="user.admin" class="login-card purge-card">
-        <h1>待删除页面</h1>
-        <p class="sync-desc">在阅读页点删除图标标记的页面，会在下次定时入库时批量删除（同时清理其他页面对它们的引用），也可立即手动执行。</p>
-        <div v-if="deletions.items.length === 0" class="purge-empty">暂无待删除页面</div>
+        <h1>{{ t('purge.title') }}</h1>
+        <p class="sync-desc">{{ t('purge.desc') }}</p>
+        <div v-if="deletions.items.length === 0" class="purge-empty">{{ t('purge.empty') }}</div>
         <div v-for="d in deletions.items" :key="d.file" class="purge-row">
           <a class="purge-title" :href="'#/doc/' + encodeURIComponent(d.file)">
             <span class="type-badge">{{ typeLabel(d.type) }}</span>{{ d.title }}
-            <span v-if="!d.exists" class="purge-stale" title="文件已不在库中，清理时将直接核销标记">已失效</span>
+            <span v-if="!d.exists" class="purge-stale" :title="t('purge.staleTitle')">{{ t('purge.stale') }}</span>
           </a>
           <span class="purge-meta">{{ d.marked_by }} · {{ (d.marked_at || '').slice(0, 10) }}</span>
-          <button class="icon-btn" title="取消删除标记" aria-label="取消删除标记"
+          <button class="icon-btn" :title="t('purge.unmark')" :aria-label="t('purge.unmark')"
                   @click="unmarkDeletion(d.file)">
             <icon name="x"></icon>
           </button>
         </div>
         <p v-if="purgeStatus && purgeStatus.last_run" class="ok-msg">
-          上次清理：{{ fmtSyncTs(purgeStatus.last_run) }}（{{ fmtPurgeResult(purgeStatus.result) }}<span v-if="purgeStatus.detail"> · {{ purgeStatus.detail }}</span>）
+          {{ t('purge.lastRun', { ts: fmtSyncTs(purgeStatus.last_run), result: fmtPurgeResult(purgeStatus.result) }) }}<span v-if="purgeDetailText"> · {{ purgeDetailText }}</span>
         </p>
         <p v-if="purge.error" class="error">{{ purge.error }}</p>
         <button v-if="deletions.items.length" class="btn btn-danger"
                 @click="executePurge" :disabled="purge.running">
-          {{ purge.running ? '执行中…' : '立即执行删除（' + deletions.items.length + '）' }}
+          {{ purge.running ? t('purge.running') : t('purge.execute', { n: deletions.items.length }) }}
         </button>
       </div>
     </main>
@@ -123,33 +147,33 @@
   <!-- 阅读页 -->
   <div v-else-if="view === 'doc'" class="doc-page">
     <header class="topbar">
-      <button class="btn" @click="backToList">← 返回</button>
+      <button class="btn" @click="backToList">{{ t('common.back') }}</button>
       <span class="topbar-title">{{ doc ? doc.meta.title : '' }}</span>
       <button v-if="doc" class="icon-btn"
               :class="{bookmarked: doc.meta.bookmarked}"
-              :title="doc.meta.bookmarked ? '取消收藏' : '收藏'"
-              :aria-label="doc.meta.bookmarked ? '取消收藏' : '收藏'"
+              :title="doc.meta.bookmarked ? t('doc.unbookmark') : t('doc.bookmark')"
+              :aria-label="doc.meta.bookmarked ? t('doc.unbookmark') : t('doc.bookmark')"
               @click="toggleBookmark">
         <icon :name="doc.meta.bookmarked ? 'bookmark-filled' : 'bookmark'"></icon>
       </button>
-      <button class="icon-btn" v-if="doc" title="标为未读" aria-label="标为未读" @click="markUnread">
+      <button class="icon-btn" v-if="doc" :title="t('doc.markUnread')" :aria-label="t('doc.markUnread')" @click="markUnread">
         <icon name="eye-off"></icon>
       </button>
       <button v-if="doc && doc.meta.can_toggle" class="icon-btn"
               :class="{personal: doc.meta.visibility === 'personal'}"
-              :title="doc.meta.visibility === 'personal' ? '设为共享' : '设为个人'"
-              :aria-label="doc.meta.visibility === 'personal' ? '设为共享' : '设为个人'"
+              :title="doc.meta.visibility === 'personal' ? t('doc.setShared') : t('doc.setPersonal')"
+              :aria-label="doc.meta.visibility === 'personal' ? t('doc.setShared') : t('doc.setPersonal')"
               @click="toggleVisibility">
         <icon :name="doc.meta.visibility === 'personal' ? 'lock' : 'unlock'"></icon>
       </button>
       <button v-if="doc && user.admin" class="icon-btn"
               :class="{marked: doc.meta.marked_deleted}"
-              :title="doc.meta.marked_deleted ? '取消删除标记' : '标记删除'"
-              :aria-label="doc.meta.marked_deleted ? '取消删除标记' : '标记删除'"
+              :title="doc.meta.marked_deleted ? t('purge.unmark') : t('doc.markDelete')"
+              :aria-label="doc.meta.marked_deleted ? t('purge.unmark') : t('doc.markDelete')"
               @click="toggleDeleteMark">
         <icon name="trash-2"></icon>
       </button>
-      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
         <icon name="log-out"></icon>
       </button>
     </header>
@@ -157,20 +181,20 @@
       <div class="doc-meta">
         <span class="type-badge">{{ typeLabel(doc.meta.type) }}</span>
         <span v-if="doc.meta.visibility === 'personal'" class="vis-badge"
-              :title="'个人文档' + (doc.meta.owner ? ' · 所有者：' + doc.meta.owner : '')">个人</span>
-        <span v-for="t in doc.meta.tags" :key="t" class="tag-chip small">{{ t }}</span>
-        <span class="dates">创建 {{ doc.meta.created }} · 更新 {{ doc.meta.updated }}</span>
+              :title="doc.meta.owner ? t('common.personalWithTitle', { owner: doc.meta.owner }) : t('common.personalTitle')">{{ t('common.personal') }}</span>
+        <span v-for="tg in doc.meta.tags" :key="tg" class="tag-chip small">{{ tg }}</span>
+        <span class="dates">{{ t('doc.dates', { created: doc.meta.created, updated: doc.meta.updated }) }}</span>
       </div>
       <div v-if="doc.meta.marked_deleted" class="marked-banner">
-        本页面已标记待删除，将在下次定时清理时被删除（含其他页面对它的引用）。
+        {{ t('doc.markedBanner') }}
       </div>
       <article class="markdown-body" v-html="doc.html"></article>
       <!-- 相关页面：局部关联图（窄屏默认折叠）+ 相关度列表 -->
       <section v-if="doc.related && doc.related.length" class="related-panel">
         <div class="related-head">
-          <span class="related-title-head">相关页面</span>
+          <span class="related-title-head">{{ t('doc.relatedTitle') }}</span>
           <button class="btn small-btn rel-toggle" @click="toggleRelGraph">
-            {{ relGraphOpen ? '收起关联图' : '展开关联图' }}
+            {{ relGraphOpen ? t('doc.relClose') : t('doc.relOpen') }}
           </button>
         </div>
         <div :class="['rel-graph-wrap', {open: relGraphOpen}]">
@@ -194,34 +218,34 @@
         <a v-if="doc.next" :href="'#/doc/' + encodeURIComponent(doc.next.file)">{{ doc.next.title }} →</a>
       </nav>
       <!-- 章节目录：浮动按钮呼出抽屉，移动端不挤占正文 -->
-      <button v-if="toc.length" class="toc-fab" title="目录" aria-label="目录" @click="showToc = true">
+      <button v-if="toc.length" class="toc-fab" :title="t('doc.toc')" :aria-label="t('doc.toc')" @click="showToc = true">
         <icon name="list"></icon>
       </button>
       <div v-if="showToc" class="toc-backdrop" @click="showToc = false"></div>
       <aside v-show="showToc" :class="['toc-drawer', {open: showToc}]">
         <div class="toc-head">
-          <span>目录</span>
-          <button class="toc-close" @click="showToc = false">×</button>
+          <span>{{ t('doc.toc') }}</span>
+          <button class="toc-close" :aria-label="t('common.close')" @click="showToc = false">×</button>
         </div>
-        <a v-for="t in toc" :key="t.id" :class="'toc-l' + t.level" @click="jumpTo(t.id)">{{ t.text }}</a>
+        <a v-for="c in toc" :key="c.id" :class="'toc-l' + c.level" @click="jumpTo(c.id)">{{ c.text }}</a>
       </aside>
     </main>
-    <div v-else class="center-box"><p>加载中…</p></div>
+    <div v-else class="center-box"><p>{{ t('common.loading') }}</p></div>
   </div>
 
   <!-- 收藏夹页 -->
   <div v-else-if="view === 'bookmarks'" class="bookmarks-page">
     <header class="topbar">
-      <button class="btn" @click="backToList">← 返回</button>
-      <span class="topbar-title">收藏夹</span>
-      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+      <button class="btn" @click="backToList">{{ t('common.back') }}</button>
+      <span class="topbar-title">{{ t('bm.title') }}</span>
+      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
         <icon name="log-out"></icon>
       </button>
     </header>
 
     <div v-if="bookmarks.facet && Object.keys(bookmarks.facet).length" class="bm-filter">
       <button :class="['bm-chip', {active: !bmFilterTag}]" @click="setBmFilter('')">
-        全部<span v-if="bookmarks.total" class="badge badge-all">{{ bookmarks.total }}</span>
+        {{ t('bm.all') }}<span v-if="bookmarks.total" class="badge badge-all">{{ bookmarks.total }}</span>
       </button>
       <button v-for="(count, tag) in bookmarks.facet" :key="tag"
               :class="['bm-chip', {active: bmFilterTag === tag}]"
@@ -233,7 +257,7 @@
     <main class="bm-list">
       <div v-if="!bmLoading && bookmarks.items.length === 0" class="bm-empty">
         <icon name="bookmark"></icon>
-        <p>暂无收藏，去文章页点收藏图标试试</p>
+        <p>{{ t('bm.empty') }}</p>
       </div>
       <div v-for="d in bookmarks.items" :key="d.file" class="bm-item">
         <a class="bm-item-main" :href="'#/doc/' + encodeURIComponent(d.file)">
@@ -241,17 +265,17 @@
           <div class="bm-item-meta">
             <span class="type-badge">{{ typeLabel(d.type) }}</span>
             <span v-if="d.visibility === 'personal'" class="vis-badge"
-                  :title="'个人文档' + (d.owner ? ' · 所有者：' + d.owner : '')">个人</span>
-            <span class="doc-date">收藏于 {{ (d.added || '').slice(0, 10) }}</span>
+                  :title="d.owner ? t('common.personalWithTitle', { owner: d.owner }) : t('common.personalTitle')">{{ t('common.personal') }}</span>
+            <span class="doc-date">{{ t('bm.addedAt', { date: (d.added || '').slice(0, 10) }) }}</span>
           </div>
         </a>
         <div class="bm-item-tags">
-          <span v-for="t in d.bookmark_tags" :key="t" class="tag-chip small">{{ t }}</span>
+          <span v-for="tg in d.bookmark_tags" :key="tg" class="tag-chip small">{{ tg }}</span>
           <span class="bm-item-actions">
-            <button class="icon-btn" title="编辑标签" aria-label="编辑标签" @click="editBookmarkTags(d)">
+            <button class="icon-btn" :title="t('bm.editTags')" :aria-label="t('bm.editTags')" @click="editBookmarkTags(d)">
               <icon name="edit-3"></icon>
             </button>
-            <button class="icon-btn" title="取消收藏" aria-label="取消收藏" @click="removeBookmark(d.file)">
+            <button class="icon-btn" :title="t('bm.remove')" :aria-label="t('bm.remove')" @click="removeBookmark(d.file)">
               <icon name="trash-2"></icon>
             </button>
           </span>
@@ -263,21 +287,21 @@
   <!-- 全库图谱页 -->
   <div v-else-if="view === 'graph'" class="graph-page">
     <header class="topbar">
-      <button class="btn" @click="backToList">← 返回</button>
-      <span class="topbar-title">知识图谱</span>
-      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+      <button class="btn" @click="backToList">{{ t('common.back') }}</button>
+      <span class="topbar-title">{{ t('graph.title') }}</span>
+      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
         <icon name="log-out"></icon>
       </button>
     </header>
     <div class="graph-toolbar">
       <input class="search graph-search" type="search" v-model.trim="gview.q"
-             placeholder="定位节点（回车）…" @keydown.enter="locateGraphNode">
+             :placeholder="t('graph.searchPlaceholder')" @keydown.enter="locateGraphNode">
       <select v-model="gview.tag" @change="drawGlobalGraph">
-        <option value="">全部标签</option>
-        <option v-for="t in allGraphTags" :key="t" :value="t">{{ t }}</option>
+        <option value="">{{ t('graph.allTags') }}</option>
+        <option v-for="tg in allGraphTags" :key="tg" :value="tg">{{ tg }}</option>
       </select>
-      <label v-for="t in graphTypes" :key="t" class="graph-type-check">
-        <input type="checkbox" v-model="gview.types[t]" @change="drawGlobalGraph"> {{ typeLabel(t) }}
+      <label v-for="tg in graphTypes" :key="tg" class="graph-type-check">
+        <input type="checkbox" v-model="gview.types[tg]" @change="drawGlobalGraph"> {{ typeLabel(tg) }}
       </label>
     </div>
     <div class="graph-canvas-wrap">
@@ -285,12 +309,12 @@
       <div v-if="gTip.show" class="graph-tip"
            :style="{left: gTip.x + 'px', top: gTip.y + 'px'}">{{ gTip.text }}</div>
       <div class="graph-legend">
-        <span v-for="t in graphTypes" :key="t" class="graph-legend-item">
-          <i class="graph-legend-dot" :data-type="t"></i>{{ typeLabel(t) }}
+        <span v-for="tg in graphTypes" :key="tg" class="graph-legend-item">
+          <i class="graph-legend-dot" :data-type="tg"></i>{{ typeLabel(tg) }}
         </span>
       </div>
       <p v-if="!gview.loading && !gview.edges.length" class="graph-empty">
-        关联图数据未生成。请在本地运行 <code>webapp/build_graph.py</code> 后发布同步。
+        {{ t('graph.emptyPre') }} <code>webapp/build_graph.py</code> {{ t('graph.emptyPost') }}
       </p>
     </div>
   </div>
@@ -298,127 +322,127 @@
   <!-- 列表页 -->
   <div v-else class="list-page">
     <header class="topbar">
-      <img class="header-logo" src="/icon.png" alt="书阁图标">
-      <span class="topbar-title">书阁</span>
-      <input class="search" type="search" v-model.trim="filters.q" placeholder="搜索标题 / 摘要…">
-      <button class="icon-btn" title="筛选" aria-label="筛选" @click="showFilters = !showFilters">
+      <img class="header-logo" src="/icon.png" :alt="t('app.logoAlt')">
+      <span class="topbar-title">{{ t('app.brand') }}</span>
+      <input class="search" type="search" v-model.trim="filters.q" :placeholder="t('list.searchPlaceholder')">
+      <button class="icon-btn" :title="t('list.filter')" :aria-label="t('list.filter')" @click="showFilters = !showFilters">
         <icon name="filter"></icon>
         <span v-if="activeFilterCount" class="icon-badge">{{ activeFilterCount }}</span>
       </button>
-      <span class="whoami" :title="'当前账户：' + user.name">{{ user.name }}</span>
-      <button class="icon-btn" title="收藏夹" aria-label="收藏夹" @click="openBookmarks">
+      <span class="whoami" :title="t('list.whoami', { name: user.name })">{{ user.name }}</span>
+      <button class="icon-btn" :title="t('bm.title')" :aria-label="t('bm.title')" @click="openBookmarks">
         <icon name="bookmark"></icon>
       </button>
-      <button class="icon-btn" title="知识图谱" aria-label="知识图谱" @click="openGraph">
+      <button class="icon-btn" :title="t('graph.title')" :aria-label="t('graph.title')" @click="openGraph">
         <icon name="share-2"></icon>
       </button>
-      <button class="icon-btn" title="设置" aria-label="设置" @click="openSettings">
+      <button class="icon-btn" :title="t('settings.title')" :aria-label="t('settings.title')" @click="openSettings">
         <icon name="settings"></icon>
       </button>
-      <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="doLogout">
+      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
         <icon name="log-out"></icon>
       </button>
     </header>
 
     <div class="status-tabs">
-      <button v-for="t in statusTabs" :key="t.key"
-              :class="['tab', {active: filters.status === t.key}]"
-              @click="setStatus(t.key)">
-        {{ t.label }}<span :class="['badge', 'badge-' + t.key]" v-if="counts[t.key]">{{ counts[t.key] }}</span>
+      <button v-for="st in statusTabs" :key="st.key"
+              :class="['tab', {active: filters.status === st.key}]"
+              @click="setStatus(st.key)">
+        {{ st.label }}<span :class="['badge', 'badge-' + st.key]" v-if="counts[st.key]">{{ counts[st.key] }}</span>
       </button>
     </div>
 
     <div v-if="showFilters" class="filter-panel">
       <div class="filter-row">
         <select v-model="filters.type">
-          <option value="">全部类型</option>
-          <option value="sources">资料</option>
-          <option value="entities">实体</option>
-          <option value="concepts">概念</option>
-          <option value="synthesis">综合</option>
-          <option value="archive">原文</option>
+          <option value="">{{ t('filters.allTypes') }}</option>
+          <option value="sources">{{ t('type.sources') }}</option>
+          <option value="entities">{{ t('type.entities') }}</option>
+          <option value="concepts">{{ t('type.concepts') }}</option>
+          <option value="synthesis">{{ t('type.synthesis') }}</option>
+          <option value="archive">{{ t('type.archive') }}</option>
         </select>
-        <select v-model="filters.visibility" title="按个人/共享筛选">
-          <option value="">全部可见性</option>
-          <option value="shared">共享</option>
-          <option value="personal">个人</option>
+        <select v-model="filters.visibility" :title="t('filters.byVisibility')">
+          <option value="">{{ t('filters.allVisibility') }}</option>
+          <option value="shared">{{ t('filters.shared') }}</option>
+          <option value="personal">{{ t('common.personal') }}</option>
         </select>
-        <input type="date" v-model="filters.date_from" title="创建日期起">
-        <input type="date" v-model="filters.date_to" title="创建日期止">
+        <input type="date" v-model="filters.date_from" :title="t('filters.dateFrom')">
+        <input type="date" v-model="filters.date_to" :title="t('filters.dateTo')">
         <select v-model="filters.sort">
-          <option value="created">按创建时间</option>
-          <option value="updated">按更新时间</option>
-          <option value="title">按标题</option>
+          <option value="created">{{ t('filters.sortCreated') }}</option>
+          <option value="updated">{{ t('filters.sortUpdated') }}</option>
+          <option value="title">{{ t('filters.sortTitle') }}</option>
         </select>
-        <button class="btn" @click="clearFilters">清空筛选</button>
+        <button class="btn" @click="clearFilters">{{ t('filters.clear') }}</button>
       </div>
       <div v-for="(tags, group) in visibleTagGroups" :key="group" class="tag-group">
         <div class="tag-group-name">{{ group }}</div>
-        <span v-for="t in tags" :key="t"
-              :class="['tag-chip', {on: filters.tags.includes(t)}]"
-              @click="toggleTag(t)">{{ t }}</span>
+        <span v-for="tg in tags" :key="tg"
+              :class="['tag-chip', {on: filters.tags.includes(tg)}]"
+              @click="toggleTag(tg)">{{ tg }}</span>
       </div>
     </div>
 
     <main class="doc-list">
-      <p v-if="!loading && items.length === 0" class="empty">没有匹配的文档</p>
+      <p v-if="!loading && items.length === 0" class="empty">{{ t('list.empty') }}</p>
       <a v-for="d in items" :key="d.file" class="doc-item" :href="'#/doc/' + encodeURIComponent(d.file)">
         <div class="doc-item-head">
-          <span class="dot new" v-if="d.is_new" title="新增"></span>
-          <span class="dot unread" v-else-if="!d.read" title="未读"></span>
+          <span class="dot new" v-if="d.is_new" :title="t('status.new')"></span>
+          <span class="dot unread" v-else-if="!d.read" :title="t('status.unread')"></span>
           <span class="doc-title">{{ d.title }}</span>
           <span class="doc-date">{{ d.created }}</span>
         </div>
         <p class="doc-summary" v-if="d.summary">{{ d.summary }}</p>
         <div class="doc-item-tags">
           <span class="type-badge">{{ typeLabel(d.type) }}</span>
-          <span v-if="d.marked_deleted" class="marked-badge" title="已标记待删除">
+          <span v-if="d.marked_deleted" class="marked-badge" :title="t('doc.markedBadge')">
             <icon name="trash-2"></icon>
           </span>
           <span v-if="d.visibility === 'personal'" class="vis-badge"
-                :title="'个人文档' + (d.owner ? ' · 所有者：' + d.owner : '')">个人</span>
-          <span v-for="t in d.tags" :key="t"
-                :class="['tag-chip', 'small', 'clickable', {on: filters.tags.includes(t)}]"
-                :title="'筛选标签：' + t"
-                @click.prevent.stop="filterByTag(t)">{{ t }}</span>
+                :title="d.owner ? t('common.personalWithTitle', { owner: d.owner }) : t('common.personalTitle')">{{ t('common.personal') }}</span>
+          <span v-for="tg in d.tags" :key="tg"
+                :class="['tag-chip', 'small', 'clickable', {on: filters.tags.includes(tg)}]"
+                :title="t('list.filterTag', { tag: tg })"
+                @click.prevent.stop="filterByTag(tg)">{{ tg }}</span>
           <button class="icon-btn read-toggle"
                   :class="{'read-on': d.read}"
-                  :title="d.read ? '标为未读' : '标为已读'"
-                  :aria-label="d.read ? '标为未读' : '标为已读'"
+                  :title="d.read ? t('doc.markUnread') : t('doc.markRead')"
+                  :aria-label="d.read ? t('doc.markUnread') : t('doc.markRead')"
                   @click.prevent.stop="toggleRead(d)">
             <icon :name="d.read ? 'eye' : 'eye-off'"></icon>
           </button>
         </div>
       </a>
       <button v-if="items.length < total" class="btn load-more" @click="loadMore" :disabled="loading">
-        {{ loading ? '加载中…' : `加载更多（${items.length}/${total}）` }}
+        {{ loading ? t('common.loading') : t('list.loadMore', { n: items.length, total }) }}
       </button>
     </main>
   </div>
 
   <!-- 收藏标签编辑弹层（全局，阅读页/收藏夹页共用） -->
   <div v-if="bmEditor" class="modal-backdrop" @click.self="closeBmEditor"></div>
-  <div v-if="bmEditor" class="tag-editor" role="dialog" aria-modal="true" aria-label="收藏标签">
+  <div v-if="bmEditor" class="tag-editor" role="dialog" aria-modal="true" :aria-label="t('bmEditor.title')">
     <div class="tag-editor-head">
-      <span class="tag-editor-title">收藏标签</span>
-      <button class="icon-btn" title="关闭" aria-label="关闭" @click="closeBmEditor"><icon name="x"></icon></button>
+      <span class="tag-editor-title">{{ t('bmEditor.title') }}</span>
+      <button class="icon-btn" :title="t('common.close')" :aria-label="t('common.close')" @click="closeBmEditor"><icon name="x"></icon></button>
     </div>
     <div class="tag-editor-file" v-if="bmEditor.title">{{ bmEditor.title }}</div>
     <div class="tag-editor-tags">
-      <span v-for="t in bmEditor.tags" :key="t" class="tag-chip on">
-        {{ t }}<button class="chip-x" title="移除" aria-label="移除标签" @click="removeBmTag(t)">×</button>
+      <span v-for="tg in bmEditor.tags" :key="tg" class="tag-chip on">
+        {{ tg }}<button class="chip-x" :title="t('bmEditor.removeTag')" :aria-label="t('bmEditor.removeTag')" @click="removeBmTag(tg)">×</button>
       </span>
-      <input v-model="bmEditor.draft" placeholder="输入标签，回车或逗号添加"
+      <input v-model="bmEditor.draft" :placeholder="t('bmEditor.placeholder')"
              @keydown.enter.prevent="addBmTag(bmEditor.draft)"
              @keydown="handleTagDraft" />
     </div>
     <div class="tag-editor-suggest" v-if="bmEditor.suggestions.length">
-      <div class="tag-editor-suggest-name">建议标签</div>
-      <span v-for="t in bmEditor.suggestions" :key="t" class="tag-chip" @click="addBmTag(t)">{{ t }}</span>
+      <div class="tag-editor-suggest-name">{{ t('bmEditor.suggest') }}</div>
+      <span v-for="tg in bmEditor.suggestions" :key="tg" class="tag-chip" @click="addBmTag(tg)">{{ tg }}</span>
     </div>
     <div class="tag-editor-actions">
-      <button class="btn" @click="saveBmTags">保存</button>
-      <button class="btn" @click="closeBmEditor">关闭</button>
+      <button class="btn" @click="saveBmTags">{{ t('common.save') }}</button>
+      <button class="btn" @click="closeBmEditor">{{ t('common.close') }}</button>
     </div>
   </div>
 

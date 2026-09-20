@@ -4,4 +4,4 @@
 用户的知识库（vault）是独立目录，经 KB_ROOT 指向。参见 README.md。
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

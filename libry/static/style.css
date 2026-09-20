@@ -58,6 +58,18 @@ input, select { font: inherit; }
 }
 .btn:hover { border-color: var(--primary); color: var(--primary); }
 
+/* 语言切换（设置页卡片与登录卡共用；配色只用 CSS 变量，与 .filter-row select 一致） */
+.lang-select {
+  flex: 0 0 auto; white-space: nowrap; cursor: pointer;
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text);
+  font-size: 13px;
+}
+.login-card .lang-select-login { align-self: center; width: fit-content; background: var(--card); }
+/* 设置页语言卡片：单控件，比表单卡片更紧凑 */
+.lang-card { padding: 20px 28px; }
+.lang-card .lang-select { align-self: stretch; padding: 10px 12px; font-size: 15px; }
+
 /* 状态 tab */
 .status-tabs {
   display: flex; gap: 4px; padding: 8px 14px;
