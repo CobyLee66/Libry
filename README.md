@@ -81,6 +81,9 @@ Drop your coding agent (Claude Code / hermes / any AGENTS.md-aware CLI) into the
 | Agent 接入（任意 coding agent + 定时任务） | [docs/agent-integration.md](docs/agent-integration.md) |
 | 多机同步（Mac + VPS 双端） | [docs/multi-node-sync.md](docs/multi-node-sync.md) |
 | 知识库维护规则（agent 契约全文） | vault 内 `AGENTS.md`（`libry init` 生成） |
+| 引擎开发规范（本仓库贡献者/agent 必读） | [AGENTS.md](AGENTS.md) |
+| 前端风格规范 | [docs/frontend-style.md](docs/frontend-style.md) |
+| API 一览 | [docs/api.md](docs/api.md) |
 
 ## CLI 一览
 
