@@ -6,6 +6,7 @@ set -euo pipefail
 ENGINE="$(cd "$(dirname "$0")/.." && pwd)"
 KB_ROOT="${KB_ROOT:?需要环境变量 KB_ROOT 指向 vault 路径}"
 cd "$KB_ROOT"
+[ -f .env ] && { set -a; . ./.env; set +a; }
 
 PY="$ENGINE/.venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3)"
