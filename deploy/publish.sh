@@ -61,7 +61,7 @@ fi
 "$PY" -m libry.purge_marked --reconcile-only >/dev/null 2>&1 || true
 
 # 只提交知识库内容变更（引擎代码改动走引擎仓库的 update.sh）
-git add wiki/ index.md tags.md $CONTENT_DIRS 2>/dev/null || true
+git add wiki/ index.md tags.md logs/ $CONTENT_DIRS 2>/dev/null || true
 
 if git diff --cached --quiet; then
   echo "[libry-publish] 无知识库内容变更，跳过 commit/push"

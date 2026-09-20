@@ -20,7 +20,8 @@
   <!-- 登录页 -->
   <div v-else-if="view === 'login'" class="center-box">
     <form class="login-card" @submit.prevent="doLogin">
-      <h1>AI知识库</h1>
+      <img class="login-logo" src="/icon.png" alt="书阁图标">
+      <h1>书阁</h1>
       <input type="text" v-model.trim="loginUser" placeholder="用户名" autofocus autocomplete="username">
       <div class="pw-field">
         <input :type="show.login ? 'text' : 'password'" v-model="password" placeholder="密码" autocomplete="current-password">
@@ -297,8 +298,8 @@
   <!-- 列表页 -->
   <div v-else class="list-page">
     <header class="topbar">
-      <img class="header-logo" src="/icon.png" alt="AI知识库图标">
-      <span class="topbar-title">AI知识库</span>
+      <img class="header-logo" src="/icon.png" alt="书阁图标">
+      <span class="topbar-title">书阁</span>
       <input class="search" type="search" v-model.trim="filters.q" placeholder="搜索标题 / 摘要…">
       <button class="icon-btn" title="筛选" aria-label="筛选" @click="showFilters = !showFilters">
         <icon name="filter"></icon>

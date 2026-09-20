@@ -1,4 +1,4 @@
-/* AI-Docs 知识库 Web — 移动优先样式 */
+/* Libry（书阁）知识库 Web — 移动优先样式 */
 :root {
   --bg: #f6f7f9;
   --card: #ffffff;
@@ -459,3 +459,6 @@ input, select { font: inherit; }
     border-radius: 12px 12px 0 0; max-height: 70vh;
   }
 }
+
+/* 登录页 logo（书阁） */
+.login-logo { display: block; margin: 0 auto 10px; width: 56px; height: 56px; border-radius: 14px; }
