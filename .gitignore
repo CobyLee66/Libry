@@ -16,7 +16,16 @@ venv/
 .libry/
 *.log
 
+# 密钥与本机配置（公开仓库纵深防御：vault .env、私钥、本地环境脚本绝不入库）
+.env
+*.pem
+*.key
+*-env.local
+*.local.sh
+
 # 系统与编辑器
 .DS_Store
 .idea/
 .vscode/
+.zcode/
+.playwright-mcp/

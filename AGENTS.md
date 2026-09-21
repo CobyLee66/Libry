@@ -54,13 +54,36 @@ shellcheck deploy/*.sh scripts/*.sh  # shell 改动时
 
 ## 发布流程
 
-1. `CHANGELOG.md` 追加条目；`libry/__init__.py` 与 `pyproject.toml` 的 version 同步 bump。
+1. `CHANGELOG.md` 追加条目（格式契约见下节）；`libry/__init__.py` 与 `pyproject.toml` 的 version 同步 bump。
 2. 质量门全绿 → commit → push → 打 tag `vX.Y.Z`。
 3. `deploy/update.sh` 是用户侧升级入口——记得它假定可编辑安装（代码 pull 后重启即生效，依赖变更才重装）。
 
+## 文档维护（README / CHANGELOG）
+
+**README 双文件**：`README.md`（英文主）与 `README.zh-CN.md`（中文副）互为镜像，**必须同改同审**——结构、锚点、截图引用一一对应，内容漂移即缺陷。截图只放 `docs/images/readme-*.png`。
+
+**CHANGELOG 维护规则**（GitHub 标准，Keep a Changelog + SemVer）：
+
+1. **格式**：头部声明 + `## [Unreleased]` 常驻段 + 按版本倒序的 `## [X.Y.Z] - YYYY-MM-DD`；文件底部维护每个版本的 compare/tag 链接（`[Unreleased]: .../compare/vX.Y.Z...HEAD`）。
+2. **类目**：只用标准类目 `Added` / `Changed` / `Fixed` / `Deprecated` / `Removed` / `Security`；破坏性变更在条目前缀 **BREAKING** 并在发版时确保 major/minor 语义正确。
+3. **双语**：每条变更中英双语（英文一行 + 中文一行），只记「用户可见的为什么」，不复述实现细节。
+4. **时机**：一切用户可见变更（功能、API 行为、CLI 接口、配置项）在提交前记入 `[Unreleased]`；发版时把该段改名为版本号 + 日期，并补底部链接。
+5. **与代码同 PR**：CHANGELOG 更新和代码变更同一提交/PR，不事后补账。
+
+## 敏感信息纪律（公开仓库）
+
+本仓库是**公开仓库**——一旦公开，**全部 git 历史对全世界可见**，历史里也不得有敏感信息。任何本机/个人专属信息都不得入库：
+
+- **禁止提交**：真实 vault 数据与用户数据、API key/token/密码/私钥、真实域名与公网/内网 IP、SSH 别名、个人绝对路径（`~/…`、`/Users/…`）、个人账户名、个人邮箱。
+- 本机专属值一律走环境变量（`KB_*`）或 gitignored 配置文件；脚本默认值必须中性。
+- 新增文档/脚本/测试夹具时自查：示例值一律用 `kb.example.com`、`/opt/libry`、`192.0.2.10`（TEST-NET-1）这类明显占位符。
+- **截图纪律**：产品截图（`docs/images/`）只许拍 `libry init` 生成的演示 vault（模板示例内容为原创通用材料）；**绝不拍摄真实 vault**。开发调试截图只留本地、不入库。
+- 测试夹具不得来自真实知识库内容；演示数据必须原创且通用。
+- **提交前自查**：`git diff --cached | grep -inE "AI-Docs|/Users/|cobyli|@gmail|@qq\.com"`（关键词按自己环境补充，但别把真实值写进本文件）。
+
 ## 红线（违反即事故）
 
-1. **绝不提交**：任何真实 vault 数据、用户数据、密钥、真实域名/IP/SSH 别名、个人路径（`~/…` 绝对路径）、个人账户名。提交前 `grep -rn "AI-Docs\|/Users/\|cobyli" --include='*' .` 自查。
+1. **绝不提交任何敏感信息**——细则见上节「敏感信息纪律」；本节是底线提醒：真实 vault 数据、用户数据、密钥、真实域名/IP/SSH 别名、个人路径、个人账户名。
 2. **绝不引入对特定用户环境的依赖**：脚本里的路径全部经 env/config（`KB_ROOT`/`KB_*`），默认值必须中性（`kb.example.com`、`/opt/libry` 这类占位）。
 3. **消毒管线不可拆**：`server/render.py` 的 `_sanitize`（nh3 白名单）是存储型 XSS 的唯一防线，改动需在 SECURITY.md 层面评估。
 4. **模板内容保持原创与通用**：`templates/vault/` 的示例页、skills 不得携带真实知识库内容或版权材料。
