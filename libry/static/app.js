@@ -32,6 +32,8 @@
   const ICON_PATHS = {
     bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
     'bookmark-filled': '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" fill="currentColor" stroke="none"/>',
+    star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+    'star-filled': '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="currentColor" stroke="none"/>',
     x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
     'trash-2': '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
     'edit-3': '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
@@ -122,6 +124,8 @@
         bmFilterTag: '',
         bmLoading: false,
         bmEditor: null,           // { file, title, tags:[当前], draft, suggestions:[] }
+        marksData: { progress: [], marks: [] },  // 书签页：自动阅读进度 + 手动书签
+        marksLoading: false,
         toast: '',
         sync: { syncing: false, error: '' },
         syncStatus: null,
@@ -140,6 +144,7 @@
         gTip: { show: false, x: 0, y: 0, text: '' },
         _gsim: null, _gdraw: null, _gt: null, _glocated: '',
         _debounce: null, _lastScrollY: 0,
+        _progTimer: null, _pendingProg: null,  // 阅读进度上报：防抖定时器 + 待上报负载
       };
     },
     computed: {
@@ -214,6 +219,7 @@
 
       async route() {
         if (this._gsim) { this._gsim.stop(); this._gsim = null; }  // 离开图谱页停止布局仿真
+        this.flushProgress();  // 离开阅读页前补报一次阅读进度
         const hash = location.hash || '#/list';
         if (hash.startsWith('#/doc/')) {
           const ok = await this.ensureSession();
@@ -233,6 +239,11 @@
           if (!ok) return;
           this.view = 'bookmarks';
           await this.loadBookmarks();
+        } else if (hash.startsWith('#/marks')) {
+          const ok = await this.ensureSession();
+          if (!ok) return;
+          this.view = 'marks';
+          await this.loadMarks();
         } else if (hash.startsWith('#/settings')) {
           const ok = await this.ensureSession();
           if (!ok) return;
@@ -248,7 +259,7 @@
           if (!ok) return;
           this.view = 'list';
           this.restoreFilters(hash);
-          if (!this.meta) await this.loadMeta();
+          await this.loadMeta();  // 每次进入都重取：continue_reading 卡片与新增计数需反映最新进度
           await this.reloadList(false);
         }
       },
@@ -287,6 +298,8 @@
         this.meta = null; this.items = []; this.doc = null;
         this.bookmarks = { items: [], facet: {}, total: 0 };
         this.bmFilterTag = ''; this.bmEditor = null; this.toast = '';
+        this.marksData = { progress: [], marks: [] };
+        clearTimeout(this._progTimer); this._pendingProg = null;
         this.user = { name: '', admin: false }; this.users = [];
         location.hash = '#/login';
         this.view = 'login';
@@ -566,10 +579,21 @@
         this.relGraphOpen = false;
         this.docBarHidden = false;
         this._lastScrollY = 0;
+        clearTimeout(this._progTimer); this._pendingProg = null;
         try {
           this.doc = await api('/api/doc?file=' + encodeURIComponent(file));
-          window.scrollTo(0, 0);
-          this.$nextTick(() => this.buildToc());
+          this.$nextTick(() => {
+            const p = this.doc && this.doc.progress;
+            if (p && (p.pct > 0 || p.scroll > 0)) {
+              // 恢复上次阅读位置：优先按百分比（跨视口尺寸更稳），退化用像素
+              const range = document.documentElement.scrollHeight - window.innerHeight;
+              window.scrollTo(0, range > 0 ? Math.round(p.pct * range) : (p.scroll || 0));
+              this.showToast(this.t('marks.restored'));
+            } else {
+              window.scrollTo(0, 0);
+            }
+            this.buildToc();
+          });
           this.loadRelGraph(file);
         } catch (e) {
           alert(e.message);
@@ -585,8 +609,38 @@
           if (y < 24) this.docBarHidden = false;
           else if (dy > 6) this.docBarHidden = true;
           else if (dy < -6) this.docBarHidden = false;
+          this.reportProgress();
         }
         this._lastScrollY = y;
+      },
+
+      currentPos() {
+        // 当前滚动位置：像素 + 百分比（占可滚动区间；区间不存在视为 1=已读完）
+        const range = document.documentElement.scrollHeight - window.innerHeight;
+        const y = Math.max(0, Math.round(window.scrollY));
+        return { scroll: y, pct: range > 0 ? Math.min(1, y / range) : 1 };
+      },
+
+      reportProgress() {
+        // 滚动停止 ~1.5s 后防抖上报阅读进度（fire-and-forget，丢失可在下次滚动自愈）
+        if (this.view !== 'doc' || !this.doc) return;
+        const pos = this.currentPos();
+        this._pendingProg = { file: this.doc.meta.file, scroll: pos.scroll, pct: pos.pct };
+        clearTimeout(this._progTimer);
+        this._progTimer = setTimeout(() => this.flushProgress(), 1500);
+      },
+
+      flushProgress() {
+        // 立即上报待发的阅读进度（离开阅读页前调用；keepalive 保证页面切换不丢）
+        clearTimeout(this._progTimer); this._progTimer = null;
+        const p = this._pendingProg;
+        if (!p) return;
+        this._pendingProg = null;
+        fetch('/api/state/progress', {
+          method: 'POST', keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(p),
+        }).catch(() => { /* ignore */ });
       },
 
       buildToc() {
@@ -752,6 +806,60 @@
           this.showToast(this.t('bm.removedToast'));
           await this.loadBookmarks(); // 刷新列表与 facet
         } catch (e) { this.showToast(e.message); }
+      },
+
+      // ---------------- 书签（阅读位置） ----------------
+
+      openMarks() {
+        location.hash = '#/marks';
+      },
+
+      async loadMarks() {
+        this.marksLoading = true;
+        try {
+          this.marksData = await api('/api/marks');
+        } finally {
+          this.marksLoading = false;
+        }
+      },
+
+      async toggleMark() {
+        // 阅读页：在当前滚动位置添加书签；已有书签则更新到当前位置
+        if (!this.doc) return;
+        const file = this.doc.meta.file;
+        const pos = this.currentPos();
+        const existed = !!this.doc.marked;
+        try {
+          await api('/api/marks', {
+            method: 'POST',
+            body: { file, scroll: pos.scroll, pct: pos.pct },
+          });
+          this.doc.marked = true;
+          this.showToast(this.t(existed ? 'marks.updated' : 'marks.saved'));
+        } catch (e) { this.showToast(e.message); }
+      },
+
+      async removeMark(file) {
+        try {
+          await api('/api/marks', { method: 'DELETE', body: { file } });
+          if (this.doc && this.doc.meta.file === file) this.doc.marked = false;
+          this.showToast(this.t('marks.removed'));
+          await this.loadMarks();
+        } catch (e) { this.showToast(e.message); }
+      },
+
+      async clearProgress(file) {
+        // 书签页：手动清除一条自动阅读进度（同时刷新列表页「继续阅读」卡片数据）
+        try {
+          await api('/api/state/progress', { method: 'DELETE', body: { file } });
+          this.showToast(this.t('marks.progressCleared'));
+          await this.loadMarks();
+          if (this.meta) await this.loadMeta();
+        } catch (e) { this.showToast(e.message); }
+      },
+
+      fmtPct(p) {
+        return Math.round((p || 0) * 100) + '%';
       },
 
       // ---------------- 关联图 ----------------

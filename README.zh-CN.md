@@ -8,7 +8,7 @@ Libry 是一个开源、可部署在本地或服务器上的 second-brain 系统
 
 - **引擎与内容分离**：知识库（vault）是纯 markdown 目录（Obsidian 兼容），永远不锁数据；引擎是一个轻量 Python 包（FastAPI + Vue 3，无前端构建步骤）。
 - **Agent 承担图书管理员**：vault 自带 `AGENTS.md` 契约与 `.agents/skills/`（kb-ingest / kb-lint / kb-publish / kb-query），任何 coding agent（Claude Code、hermes、ZCode、Codex……）读到即可上岗；定时任务让入库与 lint 全自动跑。
-- **为阅读而生**：多账户、已读/新增跟踪、收藏夹、文档级个人/共享可见性、基于 embedding 的关联图（可选组件）、双端 git 同步。
+- **为阅读而生**：多账户、已读/新增跟踪、阅读进度记忆（「继续阅读」卡片）、收藏夹与位置书签、文档级个人/共享可见性、基于 embedding 的关联图（可选组件）、双端 git 同步。
 - **部署极简**：`libry init` 一条命令脚手架；`deploy/install.sh` 裸机装服务（systemd / launchd + Caddy 模板）。Docker 支持在路线图上（v0.2+）。
 
 <p align="center">

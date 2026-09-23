@@ -32,6 +32,44 @@ def test_merge_state_read_union_and_watermark_max():
     assert out["new_since"] == "2026-01-05T00:00:00+00:00"       # 水位取最大
 
 
+def test_merge_state_progress_lww():
+    local = {"users": {"a": {"progress": {
+        "f1": {"scroll": 100, "pct": 0.1, "updated_at": "2026-01-03T00:00:00+00:00"},
+        "f2": {"scroll": 200, "pct": 0.2, "updated_at": "2026-01-01T00:00:00+00:00"}}}}}
+    remote = {"users": {"a": {"progress": {
+        "f1": {"scroll": 900, "pct": 0.9, "updated_at": "2026-01-02T00:00:00+00:00"},
+        "f3": {"scroll": 300, "pct": 0.3, "updated_at": "2026-01-04T00:00:00+00:00"}}}}}
+    out = merge_state(local, remote)["users"]["a"]["progress"]
+    assert out["f1"]["scroll"] == 100    # 本地较新
+    assert out["f2"]["scroll"] == 200    # 本地独有
+    assert out["f3"]["scroll"] == 300    # 远端独有
+
+
+def test_merge_state_marks_tombstone_wins():
+    local = {"users": {"a": {"marks": {
+        "f1": {"scroll": 100, "pct": 0.1, "updated_at": "2026-01-01T00:00:00+00:00"}}}}}
+    remote = {"users": {"a": {"marks": {"f1": {"deleted": "2026-01-02T00:00:00+00:00"}}}}}
+    out = merge_state(local, remote)["users"]["a"]["marks"]
+    assert out["f1"] == {"deleted": "2026-01-02T00:00:00+00:00"}  # 较新墓碑覆盖旧书签
+    # 反向：书签更新晚于墓碑则书签生效（墓碑不复活旧位置）
+    newer = {"users": {"a": {"marks": {
+        "f1": {"scroll": 500, "pct": 0.5, "updated_at": "2026-01-03T00:00:00+00:00"}}}}}
+    out2 = merge_state(out, newer)["users"]["a"]["marks"]
+    assert out2["f1"]["scroll"] == 500
+
+
+def test_merge_state_legacy_shape_gains_empty_maps():
+    # 旧版 state.json（无 progress/marks 键）合并后补齐空表，不丢已有键
+    legacy = {"users": {"a": {"read": {"f1": "2026-01-01T00:00:00+00:00"},
+                              "new_since": None, "pending_since": None}}}
+    out = merge_state(legacy, None)["users"]["a"]
+    assert out["read"]["f1"] == "2026-01-01T00:00:00+00:00"
+    assert out["progress"] == {} and out["marks"] == {}
+    # 幂等
+    once = merge_state(legacy, None)
+    assert merge_state(once, once) == once
+
+
 def test_merge_bookmarks_tombstone_wins():
     local = {"users": {"a": {"f1": {"added": "2026-01-01T00:00:00+00:00", "updated_at": "2026-01-01T00:00:00+00:00", "tags": []}}}}
     remote = {"users": {"a": {"f1": {"deleted": "2026-01-02T00:00:00+00:00"}}}}

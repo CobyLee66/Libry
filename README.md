@@ -8,7 +8,7 @@ Libry is an open-source second-brain system you can run locally or on your own s
 
 - **Engine and content are separated** — the knowledge base (vault) is a plain markdown directory (Obsidian-compatible), so your data is never locked in. The engine is a small Python package (FastAPI + Vue 3, no frontend build step).
 - **Agents act as librarians** — the vault ships with an `AGENTS.md` contract and `.agents/skills/` (kb-ingest / kb-lint / kb-publish / kb-query). Any coding agent (Claude Code, hermes, ZCode, Codex…) can pick it up and start working; cron jobs make ingestion and linting fully automatic.
-- **Built for reading** — multiple accounts, read/unread tracking, bookmarks, per-document personal/shared visibility, an embedding-based relation graph (optional component), and two-node git sync.
+- **Built for reading** — multiple accounts, read/unread tracking, reading-progress memory with a "continue reading" card, favorites plus position bookmarks, per-document personal/shared visibility, an embedding-based relation graph (optional component), and two-node git sync.
 - **Minimal deployment** — one `libry init` command scaffolds everything; `deploy/install.sh` sets up bare-metal service (systemd / launchd + Caddy templates). Docker support is on the roadmap (v0.2+).
 
 <p align="center">

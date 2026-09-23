@@ -51,7 +51,7 @@ window.LibryLocales["en"] = {
   },
   "sync": {
     "title": "Data Sync",
-    "desc": "Syncs accounts, read history and bookmarks to GitHub, and merges both ways between this machine and the VPS.",
+    "desc": "Syncs user data — accounts, read history, favorites and bookmarks — to GitHub, and merges both ways between this machine and the VPS.",
     "lastRun": "Last sync: {ts} ({result})",
     "trigger": "Sync now",
     "syncing": "Syncing…",
@@ -83,8 +83,8 @@ window.LibryLocales["en"] = {
   "doc": {
     "dates": "Created {created} · Updated {updated}",
     "markedBanner": "This page is marked for deletion and will be removed on the next scheduled purge, along with references from other pages.",
-    "bookmark": "Bookmark",
-    "unbookmark": "Remove bookmark",
+    "bookmark": "Favorite",
+    "unbookmark": "Remove favorite",
     "markUnread": "Mark as unread",
     "markRead": "Mark as read",
     "setShared": "Make shared",
@@ -102,20 +102,37 @@ window.LibryLocales["en"] = {
     "unmarkedToast": "Delete mark removed"
   },
   "bm": {
-    "title": "Bookmarks",
+    "title": "Favorites",
     "all": "All",
-    "empty": "No bookmarks yet — tap the bookmark icon on an article to add one",
-    "addedAt": "Bookmarked {date}",
+    "empty": "No favorites yet — tap the star icon on an article to add one",
+    "addedAt": "Favorited {date}",
     "editTags": "Edit tags",
-    "remove": "Remove bookmark",
-    "removedToast": "Bookmark removed",
+    "remove": "Remove favorite",
+    "removedToast": "Favorite removed",
     "tagsSaved": "Tags saved"
   },
   "bmEditor": {
-    "title": "Bookmark tags",
+    "title": "Favorite tags",
     "removeTag": "Remove tag",
     "placeholder": "Type a tag, then press Enter or comma to add",
     "suggest": "Suggested tags"
+  },
+  "marks": {
+    "title": "Bookmarks",
+    "add": "Add bookmark",
+    "update": "Move bookmark here",
+    "saved": "Bookmark saved",
+    "updated": "Bookmark moved to current position",
+    "removed": "Bookmark removed",
+    "restored": "Resumed where you left off",
+    "progressSection": "Reading progress",
+    "progressEmpty": "No reading in progress",
+    "progressCleared": "Progress cleared",
+    "clearProgress": "Clear progress",
+    "marksSection": "My bookmarks",
+    "empty": "No bookmarks yet — tap the bookmark icon while reading to save the current position",
+    "remove": "Delete bookmark",
+    "updatedAt": "Updated {date}"
   },
   "graph": {
     "title": "Knowledge Graph",
@@ -132,7 +149,8 @@ window.LibryLocales["en"] = {
     "empty": "No matching documents",
     "loadMore": "Load more ({n}/{total})",
     "whoami": "Signed in as {name}",
-    "filterTag": "Filter by tag: {tag}"
+    "filterTag": "Filter by tag: {tag}",
+    "continueReading": "Continue reading"
   },
   "status": { "all": "All", "new": "New", "unread": "Unread", "read": "Read" },
   "filters": {
@@ -161,7 +179,8 @@ window.LibryLocales["en"] = {
     "doc_not_found": "Document not found",
     "file_not_found": "File not found",
     "files_not_list": "files must be an array",
-    "not_bookmarked": "This document is not bookmarked",
+    "not_bookmarked": "This document is not in your favorites",
+    "bad_position": "scroll/pct must be numeric",
     "bad_visibility": "visibility must be shared or personal",
     "invalid_sync_secret": "Invalid X-Sync-Secret",
     "user_not_found": "User not found",

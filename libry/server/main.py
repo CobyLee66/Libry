@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,7 +43,16 @@ SYNC_SECRET = os.environ.get("SYNC_SECRET", "")
 DOC_TYPES = ["sources", "entities", "concepts", "synthesis", "archive"]
 PAGE_SIZE_DEFAULT = 50
 
-app = FastAPI(title="Libry KB Web", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def _lifespan(_app):
+    yield
+    # uvicorn 收到 SIGTERM 优雅退出时不执行 atexit（进程最终以信号终止），
+    # 30 秒防抖窗口内未落盘的已读标记/阅读进度必须由 shutdown 钩子刷盘
+    state.flush()
+
+
+app = FastAPI(title="Libry KB Web", docs_url=None, redoc_url=None, lifespan=_lifespan)
 
 auth = Auth(
     users_path=DATA_DIR / "users.json",
@@ -54,7 +64,8 @@ auth = Auth(
 require_session = make_session_dependency(auth)
 require_admin = make_admin_dependency(auth)
 state = StateStore(STATE_PATH)
-atexit.register(state.flush)  # 防抖落盘：进程退出时强制刷掉未写入的已读标记
+# 防抖落盘双保险：atexit 覆盖正常解释器退出；SIGTERM 优雅退出由 _lifespan 的 shutdown 钩子刷盘
+atexit.register(state.flush)
 bookmarks = BookmarkStore(DATA_DIR / "bookmarks.json")
 visibility = VisibilityStore(DATA_DIR / "visibility.json")
 deletions = DeletionStore(DATA_DIR / "deletions.json")
@@ -271,6 +282,15 @@ async def meta(user: str = Depends(require_session)):
     unread = sum(1 for d in docs if d["file"] not in read_set)
     new = sum(1 for d in docs if status_of(d, read_set, since)[1])
     dates = sorted(d["created"] for d in docs if d["created"])
+    # 继续阅读：最近的阅读进度（跳过已不可见/已删除文档）
+    continue_reading = None
+    prog = state.progress_map(user)
+    for pf, pe in sorted(prog.items(), key=lambda kv: kv[1].get("updated_at") or "",
+                         reverse=True):
+        pd = doc_by_file(pf)
+        if pd and can_see(user, pd):
+            continue_reading = {"file": pf, "title": pd["title"], "pct": pe.get("pct", 0)}
+            break
     return {
         "tag_groups": idx.get("tag_groups", {}),
         "standard_tags": idx.get("standard_tags", []),
@@ -278,6 +298,7 @@ async def meta(user: str = Depends(require_session)):
         "date_range": {"min": dates[0] if dates else "", "max": dates[-1] if dates else ""},
         "stats": {"total": len(docs), "unread": unread, "new": new},
         "generated_at": idx.get("generated_at", ""),
+        "continue_reading": continue_reading,
     }
 
 
@@ -382,6 +403,8 @@ async def get_doc(file: str, user: str = Depends(require_session)):
         "prev": prev_doc,
         "next": next_doc,
         "bookmark_tags": bookmarks.get_tags(user, file),
+        "progress": state.progress_map(user).get(file),  # 阅读进度（有则前端恢复滚动位置）
+        "marked": file in state.mark_map(user),          # 是否已有手动书签
         "related": related,
     }
 
@@ -466,6 +489,31 @@ async def ack_new(user: str = Depends(require_session)):
     return {"ok": True}
 
 
+def _pos_body(body: dict) -> tuple:
+    """解析滚动位置负载 {scroll, pct}；非数值抛 400。"""
+    try:
+        return int(body.get("scroll") or 0), float(body.get("pct") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="bad_position")
+
+
+@app.post("/api/state/progress")
+async def save_progress(request: Request, user: str = Depends(require_session)):
+    """滚动时防抖上报阅读进度；pct >= 0.98 视为读完，由 StateStore 清除条目。"""
+    body = await request.json()
+    file = _valid_file(str(body.get("file", "")), user)
+    scroll, pct = _pos_body(body)
+    state.save_progress(user, file, scroll, pct)
+    return {"ok": True}
+
+
+@app.delete("/api/state/progress")
+async def clear_progress(request: Request, user: str = Depends(require_session)):
+    body = await request.json()
+    state.clear_progress(user, str(body.get("file", "")))
+    return {"ok": True}
+
+
 # ---------------- 收藏夹 ----------------
 
 def _valid_file(file: str, user: str):
@@ -520,6 +568,48 @@ async def remove_bookmark(request: Request, user: str = Depends(require_session)
     file = str(body.get("file", ""))
     removed = bookmarks.remove(user, file)
     return {"ok": True, "bookmarked": False, "removed": removed}
+
+
+# ---------------- 书签（阅读位置） ----------------
+
+def _enrich_positions(entries: dict, user: str, ctx: dict) -> list:
+    """位置表（progress/marks）→ public_doc 列表，附 pct/pos_updated_at，按时间倒序。"""
+    items = []
+    for file, e in entries.items():
+        d = doc_by_file(file)
+        if not d or not can_see(user, d):
+            continue  # 文档已不在索引或当前用户不可见，跳过展示（保留存储）
+        item = public_doc(d, user, ctx)
+        item["pct"] = e.get("pct", 0)
+        item["pos_updated_at"] = e.get("updated_at", "")
+        items.append(item)
+    items.sort(key=lambda x: x.get("pos_updated_at", ""), reverse=True)
+    return items
+
+
+@app.get("/api/marks")
+async def list_marks(user: str = Depends(require_session)):
+    """书签页数据：自动阅读进度 + 手动书签两节。"""
+    ctx = user_context(user)
+    return {"progress": _enrich_positions(state.progress_map(user), user, ctx),
+            "marks": _enrich_positions(state.mark_map(user), user, ctx)}
+
+
+@app.post("/api/marks")
+async def set_mark(request: Request, user: str = Depends(require_session)):
+    """添加/更新手动书签（每篇文档一个，记录当前滚动位置）。"""
+    body = await request.json()
+    file = _valid_file(str(body.get("file", "")), user)
+    scroll, pct = _pos_body(body)
+    entry = state.set_mark(user, file, scroll, pct)
+    return {"ok": True, "marked": True, "updated_at": entry["updated_at"]}
+
+
+@app.delete("/api/marks")
+async def remove_mark(request: Request, user: str = Depends(require_session)):
+    body = await request.json()
+    removed = state.remove_mark(user, str(body.get("file", "")))
+    return {"ok": True, "marked": False, "removed": removed}
 
 
 # ---------------- 文档可见性 ----------------

@@ -51,7 +51,7 @@ window.LibryLocales["zh-CN"] = {
   },
   "sync": {
     "title": "数据同步",
-    "desc": "统一账户、已读历史与收藏夹到 GitHub，并在本机与 VPS 之间双向同步。",
+    "desc": "统一账户、已读历史、收藏与书签等用户数据到 GitHub，并在本机与 VPS 之间双向同步。",
     "lastRun": "上次同步：{ts}（{result}）",
     "trigger": "立即同步",
     "syncing": "同步中…",
@@ -117,6 +117,23 @@ window.LibryLocales["zh-CN"] = {
     "placeholder": "输入标签，回车或逗号添加",
     "suggest": "建议标签"
   },
+  "marks": {
+    "title": "书签",
+    "add": "添加书签",
+    "update": "更新书签到当前位置",
+    "saved": "书签已保存",
+    "updated": "书签已更新到当前位置",
+    "removed": "书签已删除",
+    "restored": "已恢复到上次阅读位置",
+    "progressSection": "阅读进度",
+    "progressEmpty": "暂无进行中的阅读进度",
+    "progressCleared": "阅读进度已清除",
+    "clearProgress": "清除进度",
+    "marksSection": "我的书签",
+    "empty": "暂无书签，在阅读页点书签图标记录当前位置",
+    "remove": "删除书签",
+    "updatedAt": "更新于 {date}"
+  },
   "graph": {
     "title": "知识图谱",
     "searchPlaceholder": "定位节点（回车）…",
@@ -132,7 +149,8 @@ window.LibryLocales["zh-CN"] = {
     "empty": "没有匹配的文档",
     "loadMore": "加载更多（{n}/{total}）",
     "whoami": "当前账户：{name}",
-    "filterTag": "筛选标签：{tag}"
+    "filterTag": "筛选标签：{tag}",
+    "continueReading": "继续阅读"
   },
   "status": { "all": "全部", "new": "新增", "unread": "未读", "read": "已读" },
   "filters": {
@@ -162,6 +180,7 @@ window.LibryLocales["zh-CN"] = {
     "file_not_found": "文件不存在",
     "files_not_list": "files 必须是数组",
     "not_bookmarked": "尚未收藏该文档",
+    "bad_position": "scroll/pct 必须是数值",
     "bad_visibility": "visibility 必须是 shared 或 personal",
     "invalid_sync_secret": "无效的 X-Sync-Secret",
     "user_not_found": "用户不存在",

@@ -3,7 +3,7 @@
 
 同步范围（仅这五个文件，绝不触碰代码/文档）：
   <data>/users.json       账户（bcrypt 哈希 + 墓碑）
-  <data>/state.json       已读/新增水位
+  <data>/state.json       已读/新增水位 + 阅读进度（progress）+ 手动书签（marks）
   <data>/bookmarks.json   收藏夹（updated_at + 墓碑）
   <data>/visibility.json  文档个人/共享可见性覆盖（updated_at LWW）
   <data>/deletions.json   待删除标记（marked_at/deleted/purged LWW）
@@ -124,8 +124,27 @@ def merge_bookmarks(local, remote):
     return {"users": out}
 
 
+def _merge_pos_map(lhs, rhs):
+    """progress/marks 位置表的 per-file LWW 合并：updated_at/deleted 较新者胜，
+    平局取远端（确定性，与 _pick 一致）；墓碑条目照常参与比较（删除可后胜）。"""
+    lhs, rhs = lhs or {}, rhs or {}
+    out = {}
+    for f in set(lhs) | set(rhs):
+        a, b = lhs.get(f), rhs.get(f)
+        if a is None:
+            out[f] = b
+        elif b is None:
+            out[f] = a
+        else:
+            out[f] = _pick(a, b,
+                           a.get("updated_at") or a.get("deleted"),
+                           b.get("updated_at") or b.get("deleted"))
+    return out
+
+
 def merge_state(local, remote):
-    """state.json：read 单调并集（取更晚时间戳），水位取最大。"""
+    """state.json：read 单调并集（取更晚时间戳），水位取最大；
+    progress per-file LWW(updated_at)；marks per-file LWW(updated_at/deleted) 保留墓碑。"""
     lu = (local or {}).get("users") or {}
     ru = (remote or {}).get("users") or {}
     out = {}
@@ -146,6 +165,8 @@ def merge_state(local, remote):
             "read": mread,
             "new_since": _max_ts(lhs.get("new_since"), rhs.get("new_since")),
             "pending_since": _max_ts(lhs.get("pending_since"), rhs.get("pending_since")),
+            "progress": _merge_pos_map(lhs.get("progress"), rhs.get("progress")),
+            "marks": _merge_pos_map(lhs.get("marks"), rhs.get("marks")),
         }
     return {"users": out}
 

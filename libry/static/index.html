@@ -157,7 +157,14 @@
                 :title="doc.meta.bookmarked ? t('doc.unbookmark') : t('doc.bookmark')"
                 :aria-label="doc.meta.bookmarked ? t('doc.unbookmark') : t('doc.bookmark')"
                 @click="toggleBookmark">
-          <icon :name="doc.meta.bookmarked ? 'bookmark-filled' : 'bookmark'"></icon>
+          <icon :name="doc.meta.bookmarked ? 'star-filled' : 'star'"></icon>
+        </button>
+        <button v-if="doc" class="icon-btn"
+                :class="{'has-mark': doc.marked}"
+                :title="doc.marked ? t('marks.update') : t('marks.add')"
+                :aria-label="doc.marked ? t('marks.update') : t('marks.add')"
+                @click="toggleMark">
+          <icon :name="doc.marked ? 'bookmark-filled' : 'bookmark'"></icon>
         </button>
         <button class="icon-btn" v-if="doc" :title="t('doc.markUnread')" :aria-label="t('doc.markUnread')" @click="markUnread">
           <icon name="eye-off"></icon>
@@ -260,7 +267,7 @@
 
     <main class="bm-list">
       <div v-if="!bmLoading && bookmarks.items.length === 0" class="bm-empty">
-        <icon name="bookmark"></icon>
+        <icon name="star"></icon>
         <p>{{ t('bm.empty') }}</p>
       </div>
       <div v-for="d in bookmarks.items" :key="d.file" class="bm-item">
@@ -280,6 +287,66 @@
               <icon name="edit-3"></icon>
             </button>
             <button class="icon-btn" :title="t('bm.remove')" :aria-label="t('bm.remove')" @click="removeBookmark(d.file)">
+              <icon name="trash-2"></icon>
+            </button>
+          </span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 书签页 -->
+  <div v-else-if="view === 'marks'" class="bookmarks-page">
+    <header class="topbar">
+      <button class="btn" @click="backToList">{{ t('common.back') }}</button>
+      <span class="topbar-title">{{ t('marks.title') }}</span>
+      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
+        <icon name="log-out"></icon>
+      </button>
+    </header>
+
+    <main class="bm-list">
+      <h2 class="marks-section">{{ t('marks.progressSection') }}</h2>
+      <div v-if="!marksLoading && marksData.progress.length === 0" class="bm-empty marks-empty">
+        <p>{{ t('marks.progressEmpty') }}</p>
+      </div>
+      <div v-for="d in marksData.progress" :key="'p-' + d.file" class="bm-item">
+        <a class="bm-item-main" :href="'#/doc/' + encodeURIComponent(d.file)">
+          <div class="bm-item-title">{{ d.title }}</div>
+          <div class="bm-item-meta">
+            <span class="type-badge">{{ typeLabel(d.type) }}</span>
+            <span class="doc-date">{{ t('marks.updatedAt', { date: (d.pos_updated_at || '').slice(0, 10) }) }}</span>
+          </div>
+        </a>
+        <div class="bm-item-tags">
+          <span class="progress-bar marks-bar"><i :style="{width: fmtPct(d.pct)}"></i></span>
+          <span class="marks-pct">{{ fmtPct(d.pct) }}</span>
+          <span class="bm-item-actions">
+            <button class="icon-btn" :title="t('marks.clearProgress')" :aria-label="t('marks.clearProgress')" @click="clearProgress(d.file)">
+              <icon name="x"></icon>
+            </button>
+          </span>
+        </div>
+      </div>
+
+      <h2 class="marks-section">{{ t('marks.marksSection') }}</h2>
+      <div v-if="!marksLoading && marksData.marks.length === 0" class="bm-empty marks-empty">
+        <icon name="bookmark"></icon>
+        <p>{{ t('marks.empty') }}</p>
+      </div>
+      <div v-for="d in marksData.marks" :key="'m-' + d.file" class="bm-item">
+        <a class="bm-item-main" :href="'#/doc/' + encodeURIComponent(d.file)">
+          <div class="bm-item-title">{{ d.title }}</div>
+          <div class="bm-item-meta">
+            <span class="type-badge">{{ typeLabel(d.type) }}</span>
+            <span class="doc-date">{{ t('marks.updatedAt', { date: (d.pos_updated_at || '').slice(0, 10) }) }}</span>
+          </div>
+        </a>
+        <div class="bm-item-tags">
+          <span class="progress-bar marks-bar"><i :style="{width: fmtPct(d.pct)}"></i></span>
+          <span class="marks-pct">{{ fmtPct(d.pct) }}</span>
+          <span class="bm-item-actions">
+            <button class="icon-btn" :title="t('marks.remove')" :aria-label="t('marks.remove')" @click="removeMark(d.file)">
               <icon name="trash-2"></icon>
             </button>
           </span>
@@ -335,6 +402,9 @@
       </button>
       <span class="whoami" :title="t('list.whoami', { name: user.name })">{{ user.name }}</span>
       <button class="icon-btn" :title="t('bm.title')" :aria-label="t('bm.title')" @click="openBookmarks">
+        <icon name="star"></icon>
+      </button>
+      <button class="icon-btn" :title="t('marks.title')" :aria-label="t('marks.title')" @click="openMarks">
         <icon name="bookmark"></icon>
       </button>
       <button class="icon-btn" :title="t('graph.title')" :aria-label="t('graph.title')" @click="openGraph">
@@ -347,6 +417,14 @@
         <icon name="log-out"></icon>
       </button>
     </header>
+
+    <a v-if="meta && meta.continue_reading" class="continue-card"
+       :href="'#/doc/' + encodeURIComponent(meta.continue_reading.file)">
+      <span class="continue-label">{{ t('list.continueReading') }}</span>
+      <span class="continue-title">{{ meta.continue_reading.title }}</span>
+      <span class="progress-bar"><i :style="{width: fmtPct(meta.continue_reading.pct)}"></i></span>
+      <span class="continue-pct">{{ fmtPct(meta.continue_reading.pct) }}</span>
+    </a>
 
     <div class="status-tabs">
       <button v-for="st in statusTabs" :key="st.key"
