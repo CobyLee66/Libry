@@ -418,14 +418,6 @@
       </button>
     </header>
 
-    <a v-if="meta && meta.continue_reading" class="continue-card"
-       :href="'#/doc/' + encodeURIComponent(meta.continue_reading.file)">
-      <span class="continue-label">{{ t('list.continueReading') }}</span>
-      <span class="continue-title">{{ meta.continue_reading.title }}</span>
-      <span class="progress-bar"><i :style="{width: fmtPct(meta.continue_reading.pct)}"></i></span>
-      <span class="continue-pct">{{ fmtPct(meta.continue_reading.pct) }}</span>
-    </a>
-
     <div class="status-tabs">
       <button v-for="st in statusTabs" :key="st.key"
               :class="['tab', {active: filters.status === st.key}]"
@@ -433,6 +425,14 @@
         {{ st.label }}<span :class="['badge', 'badge-' + st.key]" v-if="counts[st.key]">{{ counts[st.key] }}</span>
       </button>
     </div>
+
+    <a v-if="meta && meta.continue_reading" class="continue-card"
+       :href="'#/doc/' + encodeURIComponent(meta.continue_reading.file)">
+      <span class="continue-label">{{ t('list.continueReading') }}</span>
+      <span class="continue-title">{{ meta.continue_reading.title }}</span>
+      <span class="progress-bar"><i :style="{width: fmtPct(meta.continue_reading.pct)}"></i></span>
+      <span class="continue-pct">{{ fmtPct(meta.continue_reading.pct) }}</span>
+    </a>
 
     <div v-if="showFilters" class="filter-panel">
       <div class="filter-row">
