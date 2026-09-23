@@ -23,6 +23,8 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Changed
 
+- Mobile reading-page header: title and action buttons now split into two rows (row 1: back + title, always visible; row 2: quick-action buttons). The button row auto-hides when scrolling down and reappears when scrolling up, so it no longer squeezes the title or wastes reading space.
+  手机端阅读页顶栏优化：标题与操作按钮分两行显示（第一行返回+标题常驻，第二行快捷操作按钮），向下滚动时按钮行自动隐藏、向上滚动时恢复，标题不再被挤压，也不占用正文阅读空间。
 - `CHANGELOG.md` migrated to the Keep a Changelog 1.1.0 format with bilingual entries and version compare links.
   `CHANGELOG.md` 迁移为 Keep a Changelog 1.1.0 格式，条目双语化并补版本 compare 链接。
 

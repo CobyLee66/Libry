@@ -46,6 +46,9 @@ input, select { font: inherit; }
   padding: 10px 14px;
 }
 .topbar-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+/* 阅读页顶栏分行的包装行：display: contents 抹平盒子，桌面端布局与单行时一致；
+   窄屏下在媒体查询里覆盖为真正的两行 flex 行 */
+.topbar-row { display: contents; }
 .header-logo { width: 26px; height: 26px; border-radius: 6px; flex: 0 0 auto; }
 .list-page .topbar-title { flex: 0 0 auto; }
 .search {
@@ -453,7 +456,7 @@ input, select { font: inherit; }
   .graph-toolbar .graph-search { flex: 1 1 100%; }
   .graph-toolbar select { flex: 1 1 100%; font-size: 13px; }
   .graph-toolbar select option { font-size: 13px; }
-  /* header 始终保持单行：隐藏标题与账户名，压缩按钮 */
+  /* 列表/设置等页 header 保持单行：隐藏标题与账户名，压缩按钮 */
   .topbar { flex-wrap: nowrap; gap: 6px; padding: 8px 10px; }
   .list-page .topbar-title, .whoami, .header-logo { display: none; }
   .search { order: 0; flex-basis: auto; padding: 6px 10px; }
@@ -462,6 +465,17 @@ input, select { font: inherit; }
   .topbar-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .topbar .icon-btn, .topbar .btn { flex: 0 0 auto; white-space: nowrap; }
   .topbar .icon-btn { padding: 6px; }
+  /* 阅读页 header 改两行：第一行返回+标题常驻，第二行快捷操作按钮；
+     向下滚动时按钮行收起（app.js 加 .actions-hidden），向上滚动恢复 */
+  .doc-page .topbar { flex-direction: column; align-items: stretch; gap: 0; }
+  .doc-page .topbar-row { display: flex; align-items: center; gap: 6px; width: 100%; }
+  .doc-page .topbar-actions {
+    margin-top: 8px; max-height: 40px; overflow: hidden;
+    transition: max-height .2s ease, opacity .2s ease, margin-top .2s ease;
+  }
+  .doc-page .topbar.actions-hidden .topbar-actions {
+    max-height: 0; opacity: 0; margin-top: 0; pointer-events: none;
+  }
   /* 正文卡片去边框线，只留适当边距，提升手机端文本宽度 */
   .doc-body { padding: 10px 10px 60px; }
   .markdown-body { border: none; border-radius: 0; padding: 14px 12px; }

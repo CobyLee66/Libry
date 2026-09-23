@@ -146,36 +146,40 @@
 
   <!-- 阅读页 -->
   <div v-else-if="view === 'doc'" class="doc-page">
-    <header class="topbar">
-      <button class="btn" @click="backToList">{{ t('common.back') }}</button>
-      <span class="topbar-title">{{ doc ? doc.meta.title : '' }}</span>
-      <button v-if="doc" class="icon-btn"
-              :class="{bookmarked: doc.meta.bookmarked}"
-              :title="doc.meta.bookmarked ? t('doc.unbookmark') : t('doc.bookmark')"
-              :aria-label="doc.meta.bookmarked ? t('doc.unbookmark') : t('doc.bookmark')"
-              @click="toggleBookmark">
-        <icon :name="doc.meta.bookmarked ? 'bookmark-filled' : 'bookmark'"></icon>
-      </button>
-      <button class="icon-btn" v-if="doc" :title="t('doc.markUnread')" :aria-label="t('doc.markUnread')" @click="markUnread">
-        <icon name="eye-off"></icon>
-      </button>
-      <button v-if="doc && doc.meta.can_toggle" class="icon-btn"
-              :class="{personal: doc.meta.visibility === 'personal'}"
-              :title="doc.meta.visibility === 'personal' ? t('doc.setShared') : t('doc.setPersonal')"
-              :aria-label="doc.meta.visibility === 'personal' ? t('doc.setShared') : t('doc.setPersonal')"
-              @click="toggleVisibility">
-        <icon :name="doc.meta.visibility === 'personal' ? 'lock' : 'unlock'"></icon>
-      </button>
-      <button v-if="doc && user.admin" class="icon-btn"
-              :class="{marked: doc.meta.marked_deleted}"
-              :title="doc.meta.marked_deleted ? t('purge.unmark') : t('doc.markDelete')"
-              :aria-label="doc.meta.marked_deleted ? t('purge.unmark') : t('doc.markDelete')"
-              @click="toggleDeleteMark">
-        <icon name="trash-2"></icon>
-      </button>
-      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
-        <icon name="log-out"></icon>
-      </button>
+    <header class="topbar" :class="{ 'actions-hidden': docBarHidden }">
+      <div class="topbar-row topbar-main">
+        <button class="btn" @click="backToList">{{ t('common.back') }}</button>
+        <span class="topbar-title">{{ doc ? doc.meta.title : '' }}</span>
+      </div>
+      <div class="topbar-row topbar-actions">
+        <button v-if="doc" class="icon-btn"
+                :class="{bookmarked: doc.meta.bookmarked}"
+                :title="doc.meta.bookmarked ? t('doc.unbookmark') : t('doc.bookmark')"
+                :aria-label="doc.meta.bookmarked ? t('doc.unbookmark') : t('doc.bookmark')"
+                @click="toggleBookmark">
+          <icon :name="doc.meta.bookmarked ? 'bookmark-filled' : 'bookmark'"></icon>
+        </button>
+        <button class="icon-btn" v-if="doc" :title="t('doc.markUnread')" :aria-label="t('doc.markUnread')" @click="markUnread">
+          <icon name="eye-off"></icon>
+        </button>
+        <button v-if="doc && doc.meta.can_toggle" class="icon-btn"
+                :class="{personal: doc.meta.visibility === 'personal'}"
+                :title="doc.meta.visibility === 'personal' ? t('doc.setShared') : t('doc.setPersonal')"
+                :aria-label="doc.meta.visibility === 'personal' ? t('doc.setShared') : t('doc.setPersonal')"
+                @click="toggleVisibility">
+          <icon :name="doc.meta.visibility === 'personal' ? 'lock' : 'unlock'"></icon>
+        </button>
+        <button v-if="doc && user.admin" class="icon-btn"
+                :class="{marked: doc.meta.marked_deleted}"
+                :title="doc.meta.marked_deleted ? t('purge.unmark') : t('doc.markDelete')"
+                :aria-label="doc.meta.marked_deleted ? t('purge.unmark') : t('doc.markDelete')"
+                @click="toggleDeleteMark">
+          <icon name="trash-2"></icon>
+        </button>
+        <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
+          <icon name="log-out"></icon>
+        </button>
+      </div>
     </header>
     <main class="doc-body" v-if="doc">
       <div class="doc-meta">

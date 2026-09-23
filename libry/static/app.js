@@ -117,6 +117,7 @@
         loading: false,
         doc: null,
         toc: [], showToc: false,
+        docBarHidden: false,      // 窄屏阅读页：向下滚动时收起顶栏按钮行
         bookmarks: { items: [], facet: {}, total: 0 },
         bmFilterTag: '',
         bmLoading: false,
@@ -138,7 +139,7 @@
         },
         gTip: { show: false, x: 0, y: 0, text: '' },
         _gsim: null, _gdraw: null, _gt: null, _glocated: '',
-        _debounce: null,
+        _debounce: null, _lastScrollY: 0,
       };
     },
     computed: {
@@ -184,6 +185,8 @@
     },
     mounted() {
       window.addEventListener('hashchange', () => this.route());
+      // 阅读页滚动方向决定顶栏按钮行收起/展开（仅窄屏有视觉效果）
+      window.addEventListener('scroll', this.onDocScroll, { passive: true });
       // 窗口尺寸变化（旋转/拖拽宽度）时重绘画布，避免图形拉伸或留白
       window.addEventListener('resize', () => {
         clearTimeout(this._rsz);
@@ -561,6 +564,8 @@
         this.showToc = false;
         this.relGraphData = null;
         this.relGraphOpen = false;
+        this.docBarHidden = false;
+        this._lastScrollY = 0;
         try {
           this.doc = await api('/api/doc?file=' + encodeURIComponent(file));
           window.scrollTo(0, 0);
@@ -570,6 +575,18 @@
           alert(e.message);
           this.backToList();
         }
+      },
+
+      onDocScroll() {
+        // 窄屏阅读页：向下滚动收起顶栏按钮行，向上滚动展开，顶部附近始终展开
+        const y = window.scrollY;
+        if (this.view === 'doc') {
+          const dy = y - this._lastScrollY;
+          if (y < 24) this.docBarHidden = false;
+          else if (dy > 6) this.docBarHidden = true;
+          else if (dy < -6) this.docBarHidden = false;
+        }
+        this._lastScrollY = y;
       },
 
       buildToc() {
