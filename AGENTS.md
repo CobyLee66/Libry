@@ -51,6 +51,7 @@ shellcheck deploy/*.sh scripts/*.sh  # shell 改动时
 5. **包内绝对导入**：server 模块用 `from ..indexer import …`，不用 sys.path hack。
 6. **兼容性**：`libry/__main__.py` 的 CLI 子命令是公开接口，改名/去参数要在 CHANGELOG 标 breaking；`.libry/` 五个用户数据文件的 JSON 结构是跨端同步契约，改结构需要写迁移逻辑。
 7. **注释与文档同改**：行为变更同步更新 docstring 与 `docs/`（API 改动更新 `docs/api.md`）。
+8. **登录/凭据表单的密码管理器适配**（2026-09 于 MindTrace 项目本地二分实验实测）：登录表单须为页面加载时可见的唯一凭据 `<form>`；字段带 `name/id="username"|"password"` + `autocomplete="username"|"current-password"`；表单内只放提交按钮——多余 `type="button"` 按钮会致 LastPass 拒填密码（无文本 + 带 aria-label 的眼睛切换按钮可豁免）；注册/改密等隐藏区域用 `v-if` 不渲染（现状即如此）或散装 input，字段 `name` 不与登录表单重复。
 
 ## 发布流程
 
