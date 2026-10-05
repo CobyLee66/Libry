@@ -38,6 +38,8 @@ Each entry is bilingual: English first, 中文随行。
 
 - Read marks pending in the 30-second debounce window are no longer lost when the server stops via SIGTERM (the normal systemd/launchd stop path): uvicorn exits on SIGTERM without running `atexit` handlers, so the pending-state flush now also runs from a FastAPI shutdown (lifespan) hook. This affects the new reading progress as well.
   修复服务经 SIGTERM 停止（systemd/launchd 的常规停止方式）时丢失 30 秒防抖窗口内已读标记的问题：uvicorn 收到 SIGTERM 退出时不执行 `atexit`，未落盘改动的刷盘改由 FastAPI shutdown（lifespan）钩子同时承担；新加的阅读进度同样受益。
+- Mobile reader: fixed the header button row rapidly flickering between collapsed and expanded when scrolling down near the bottom of an article. Collapsing used to shrink the sticky header's in-flow height, which shrank the whole page; the browser then clamped `scrollY`, and that clamping event looked like an "up-scroll", re-expanding the row — a loop whose visibility depended on frame timing (hence intermittent). The button row is now an overlay hanging below the header edge and no longer affects page height; the top padding of `.doc-body` makes room for it when expanded.
+  修复手机端阅读页滚动到文章底部附近时顶栏按钮行在收起/展开间快速反复抖动的问题：原实现收起时会压缩 sticky 顶栏在文档流中的高度、使页面总高缩小，浏览器随之钳制 `scrollY`，钳制产生的反向滚动事件被误判为上滑又重新展开，形成循环（是否发作取决于帧时序，故表现为偶发）。按钮行改为挂在顶栏下沿的浮层，不再影响页面高度；`.doc-body` 顶部留白为展开态浮层让位。
 
 ## [0.2.0] - 2026-09-21
 

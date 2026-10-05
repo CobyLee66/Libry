@@ -493,19 +493,25 @@ input, select { font: inherit; }
   .topbar-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .topbar .icon-btn, .topbar .btn { flex: 0 0 auto; white-space: nowrap; }
   .topbar .icon-btn { padding: 6px; }
-  /* 阅读页 header 改两行：第一行返回+标题常驻，第二行快捷操作按钮；
-     向下滚动时按钮行收起（app.js 加 .actions-hidden），向上滚动恢复 */
-  .doc-page .topbar { flex-direction: column; align-items: stretch; gap: 0; }
+  /* 阅读页 header：第一行返回+标题常驻；快捷操作按钮行是挂在顶栏下沿的浮层，
+     向下滚动时收起（app.js 加 .actions-hidden），向上滚动恢复。
+     按钮行必须保持浮层、不占文档流高度：否则收起/展开会改变页面总高度，
+     滚动到底部附近时浏览器钳制 scrollY 产生的反向滚动事件会被误判为上滑，
+     造成收起⇄展开的快速反复抖动 */
   .doc-page .topbar-row { display: flex; align-items: center; gap: 6px; width: 100%; }
   .doc-page .topbar-actions {
-    margin-top: 8px; max-height: 40px; overflow: hidden;
-    transition: max-height .2s ease, opacity .2s ease, margin-top .2s ease;
+    position: absolute; top: 100%; left: -10px; right: -10px;
+    padding: 8px 10px;
+    background: var(--card); border-bottom: 1px solid var(--border);
+    max-height: 56px; overflow: hidden; box-sizing: border-box;
+    transition: max-height .2s ease, opacity .2s ease, padding .2s ease;
   }
   .doc-page .topbar.actions-hidden .topbar-actions {
-    max-height: 0; opacity: 0; margin-top: 0; pointer-events: none;
+    max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; pointer-events: none;
   }
-  /* 正文卡片去边框线，只留适当边距，提升手机端文本宽度 */
-  .doc-body { padding: 10px 10px 60px; }
+  /* 正文卡片去边框线，只留适当边距，提升手机端文本宽度；
+     padding-top 为展开的按钮行浮层（约 48px）让位，避免遮挡文档信息行 */
+  .doc-body { padding: 58px 10px 60px; }
   .markdown-body { border: none; border-radius: 0; padding: 14px 12px; }
   /* 标签编辑弹层在窄屏改为底部抽屉，铺满宽度不溢出 */
   .tag-editor {
