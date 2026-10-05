@@ -12,6 +12,8 @@ Each entry is bilingual: English first, 中文随行。
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-05
+
 ### Added
 
 - Reading progress memory: scrolling in the reader auto-reports the position (debounced), reopening an article restores the scroll position with a toast, and a "Continue reading" card on the list page jumps back to the most recent unfinished article. Entries are removed automatically once you reach 98%, so the progress list only holds articles you are actually mid-way through. Stored per account in `state.json` (`progress`) and merged across nodes with per-file LWW.
@@ -99,6 +101,7 @@ First public release.
 - Neutral systemd / launchd / crontab / Caddy templates.
   systemd / launchd / crontab / Caddy 中性模板。
 
-[Unreleased]: https://github.com/CobyLee66/Libry/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/CobyLee66/Libry/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/CobyLee66/Libry/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/CobyLee66/Libry/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/CobyLee66/Libry/releases/tag/v0.1.0
