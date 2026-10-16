@@ -12,6 +12,11 @@ Each entry is bilingual: English first, 中文随行。
 
 ## [Unreleased]
 
+### Fixed
+
+- Mobile reader: stabilized the auto-hiding action row on Android by requiring accumulated scroll movement before toggling and adding a top buffer, so small rebound events right after it hides no longer make it flicker open.
+  手机端阅读页：工具栏显隐改为按累计滚动位移判断，并在顶部增加缓冲区，修复 Android 上工具栏刚收起时被细碎回弹事件反复展开、快速抖动的问题。
+
 ## [0.3.0] - 2026-10-05
 
 ### Added

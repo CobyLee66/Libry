@@ -602,16 +602,23 @@
       },
 
       onDocScroll() {
-        // 窄屏阅读页：向下滚动收起顶栏按钮行，向上滚动展开，顶部附近始终展开
-        const y = window.scrollY;
+        // 窄屏阅读页：累计方向位移超过阈值才收起/展开，忽略惯性停止时的细碎反向事件
+        const y = Math.max(0, window.scrollY);
         if (this.view === 'doc') {
           const dy = y - this._lastScrollY;
-          if (y < 24) this.docBarHidden = false;
-          else if (dy > 6) this.docBarHidden = true;
-          else if (dy < -6) this.docBarHidden = false;
+          if (y < 24) {
+            this.docBarHidden = false;
+            this._lastScrollY = y;
+          } else if (dy > 12 && y > 48) {
+            // 24–48px 是顶部缓冲区，不在此处自动收起，避免与顶部强制展开相互触发
+            this.docBarHidden = true;
+            this._lastScrollY = y;
+          } else if (dy < -12) {
+            this.docBarHidden = false;
+            this._lastScrollY = y;
+          }
           this.reportProgress();
         }
-        this._lastScrollY = y;
       },
 
       currentPos() {
