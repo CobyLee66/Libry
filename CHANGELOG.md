@@ -12,6 +12,11 @@ Each entry is bilingual: English first, 中文随行。
 
 ## [Unreleased]
 
+### Changed
+
+- Vault template convention: source pages now embed the full original text under `## 原文全文（<version/date>）` instead of prefixing "附录" (Appendix); parallel sections are named after their content (e.g. `## ASR 逐字稿`, `## 评论区`) rather than "附录 A/B". Applies to the generated vault `AGENTS.md`, the bundled `kb-ingest` skill, the `make_appendix.py` helper description and the test fixture; existing vaults are unaffected (old headings stay valid).
+  模板规范调整：source 页原文全文的锚点由 `## 附录：原文全文（<版本/日期>）` 改为 `## 原文全文（<版本/日期>）`，不再加「附录」前缀；并列段落直呼内容名（如 `## ASR 逐字稿`、`## 评论区`），不用「附录 A/B」。涉及 `libry init` 生成的 vault `AGENTS.md`、内置 `kb-ingest` skill、`make_appendix.py` 说明与测试夹具；存量 vault 不受影响，旧标题仍视为合法锚点。
+
 ### Fixed
 
 - Mobile reader: stabilized the auto-hiding action row on Android by requiring accumulated scroll movement before toggling and adding a top buffer, so small rebound events right after it hides no longer make it flicker open.

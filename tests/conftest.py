@@ -58,7 +58,7 @@ def vault(tmp_path, monkeypatch):
 
         > **摘要**：这是一段足够长的摘要文字，用来通过 substantive 检查的门槛要求。
 
-        ## 附录：原文全文
+        ## 原文全文（2026-01-02）
 
         （略）
         """), encoding="utf-8")

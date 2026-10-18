@@ -2,8 +2,9 @@
 """Generate / verify a wiki source-page appendix (full original text, headings demoted one level).
 
 Rule (vault AGENTS.md convention): source pages embed the full original under
-`## 附录：原文全文（<版本/日期>）`, with every original heading demoted one level, and must be
-verified lossless ("diff 校验无截断"). Do NOT hand-retype hundreds of lines — generate, then verify.
+`## 原文全文（<版本/日期>）`（2026-10-18 起不加「附录」二字；旧 vault 存量页可能仍是
+`## 附录：原文全文（…）`，--verify 以实际锚点为准）, with every original heading demoted one level,
+and must be verified lossless ("diff 校验无截断"). Do NOT hand-retype hundreds of lines — generate, then verify.
 
 Usage:
   python3 make_appendix.py <source.md> -o <appendix.md>
