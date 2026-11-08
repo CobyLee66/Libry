@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Libry</title>
+  <style>
+    :root { --bg: #f6f7f9; --card: #fff; --border: #e5e7eb; --text: #1f2329;
+            --muted: #8a8f99; --primary: #2563eb; --danger: #dc2626; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      /* 安全区兜底：原生层未打 insets padding 时（viewport-fit=cover 已开）按 env() 让位 */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: 32px 28px; width: min(420px, calc(100vw - 32px)); text-align: center;
+    }
+    .logo { width: 64px; height: 64px; border-radius: 14px; }
+    h1 { font-size: 20px; margin: 12px 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+    .saved {
+      font-size: 14px; color: var(--text); background: var(--bg);
+      border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+      margin-bottom: 16px; word-break: break-all;
+    }
+    input {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--bg); font-size: 14px; margin-bottom: 12px;
+    }
+    input:focus { outline: none; border-color: var(--primary); }
+    button {
+      width: 100%; padding: 10px 12px; border: none; border-radius: 8px;
+      background: var(--primary); color: #fff; font-size: 14px; cursor: pointer;
+    }
+    button:hover { opacity: .92; }
+    .ghost {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      margin-top: 10px;
+    }
+    .ghost:hover { color: var(--primary); border-color: var(--primary); }
+    .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; min-height: 1.2em; }
+    .err { color: var(--danger); }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="icon.png" alt="Libry">
+    <h1>Libry · 书阁</h1>
+    <!-- 双语文案随系统语言切换：i18n 字典由服务端 Web 层提供，壳内只保留这两句话 -->
+    <p class="sub" id="sub"></p>
+
+    <div id="savedBox" class="hidden">
+      <div class="saved" id="savedUrl"></div>
+      <button id="btnContinue"></button>
+      <button class="ghost" id="btnChange"></button>
+    </div>
+
+    <div id="formBox" class="hidden">
+      <input id="urlInput" type="url" spellcheck="false" autocapitalize="off"
+             placeholder="https://kb.example.com">
+      <button id="btnGo"></button>
+      <p class="hint" id="formHint"></p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var zh = /^zh/i.test(navigator.language || '');
+      var T = zh ? {
+        sub: '输入你的 Libry 服务器地址，连接后即可阅读（支持离线缓存）',
+        lastUsed: '上次连接',
+        continueBtn: '连接',
+        offlineNote: '服务器不可达 — 可直接连接使用离线缓存，或更换地址',
+        connecting: '连接中…',
+        changeBtn: '更换服务器地址',
+        goBtn: '连接服务器',
+        hintBad: '地址无效 — 请输入服务器的 http(s) 地址'
+      } : {
+        sub: 'Enter your Libry server URL to start reading (offline caching supported)',
+        lastUsed: 'Last connected to',
+        continueBtn: 'Connect',
+        offlineNote: 'Server unreachable — you can still connect to use the offline cache, or change the URL',
+        connecting: 'Connecting…',
+        changeBtn: 'Change server URL',
+        goBtn: 'Connect',
+        hintBad: 'Invalid URL — enter the server\'s http(s) address'
+      };
+      var STORAGE_KEY = 'libry-server';
+      var $ = function (id) { return document.getElementById(id); };
+      $('sub').textContent = T.sub;
+      $('btnContinue').textContent = T.continueBtn;
+      $('btnChange').textContent = T.changeBtn;
+      $('btnGo').textContent = T.goBtn;
+      document.title = zh ? 'Libry · 书阁' : 'Libry';
+
+      function normalize(raw) {
+        var u = (raw || '').trim().replace(/\/+$/, '');
+        if (!u) return '';
+        if (!/^https?:\/\//i.test(u)) u = 'https://' + u;  // 缺省协议自动补 https
+        try {
+          var parsed = new URL(u);
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+          return parsed.origin;  // Libry 部署在站点根，壳只连 origin
+        } catch (e) { return ''; }
+      }
+
+      function showForm(preset, hint) {
+        $('savedBox').classList.add('hidden');
+        $('formBox').classList.remove('hidden');
+        if (preset) $('urlInput').value = preset;
+        var h = $('formHint');
+        h.textContent = hint || '';
+        h.className = 'hint' + (hint ? ' err' : '');
+        $('urlInput').focus();
+      }
+
+      // 服务器可达性探测：icon.png 是免认证静态资源，加时间戳防缓存
+      function probe(url, ok, fail) {
+        var img = new Image();
+        var settled = false;
+        var timer = setTimeout(function () {
+          if (!settled) { settled = true; fail(); }
+        }, 4000);
+        img.onload = function () { if (!settled) { settled = true; clearTimeout(timer); ok(); } };
+        img.onerror = function () { if (!settled) { settled = true; clearTimeout(timer); fail(); } };
+        img.src = url + '/icon.png?probe=' + Date.now();
+      }
+
+      function connect(url) {
+        localStorage.setItem(STORAGE_KEY, url);
+        $('btnContinue').disabled = true;
+        $('btnContinue').textContent = T.connecting;
+        location.replace(url);
+      }
+
+      var saved = null;
+      try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) { /* 存储不可用 */ }
+      if (saved) {
+        $('savedBox').classList.remove('hidden');
+        $('formBox').classList.add('hidden');
+        $('savedUrl').textContent = T.lastUsed + '：' + saved;
+        // 探测可达性：失败仅改提示（离线时仍可直接连接，Service Worker 会回放缓存内容）
+        probe(saved, function () {}, function () {
+          var h = $('formHint');
+          h.textContent = T.offlineNote;
+          h.className = 'hint';
+        });
+        $('btnContinue').onclick = function () { connect(saved); };
+        $('btnChange').onclick = function () { showForm(saved); };
+        var auto = setTimeout(function () { connect(saved); }, 3000);  // 短暂可反悔的自动连接
+        function cancelAuto() { clearTimeout(auto); }
+        $('btnChange').addEventListener('click', cancelAuto);
+        $('savedUrl').addEventListener('click', cancelAuto);
+      } else {
+        showForm('', '');
+      }
+
+      function submit() {
+        var url = normalize($('urlInput').value);
+        if (!url) { showForm($('urlInput').value, T.hintBad); return; }
+        connect(url);
+      }
+      $('btnGo').onclick = submit;
+      $('urlInput').addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) return;  // IME 组词中的 Enter 不是提交
+        if (e.key === 'Enter') submit();
+      });
+    })();
+  </script>
+</body>
+</html>

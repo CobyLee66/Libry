@@ -1,0 +1,10 @@
+# Rust / Tauri 构建产物
+shell/src-tauri/target/
+# tauri android init / ios init 生成的原生工程（各端本地生成，不入库；CI 里按需 init）
+shell/src-tauri/gen/
+# Cargo 锁文件：薄壳依赖跟随 tauri 大版本，允许 CI 按最新兼容版解析
+shell/src-tauri/Cargo.lock
+
+# 本机生成物：签名密钥与构建产物（密钥必须另备份，不入库）
+shell/keystore/
+dist/

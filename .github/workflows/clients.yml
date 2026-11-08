@@ -1,0 +1,91 @@
+name: Clients
+
+# 多端薄壳构建（clients/）：仅在壳工程或本 workflow 变更时触发，
+# 不影响引擎侧的 CI（ci.yml）。产物为未签名安装包/安装文件，供手动下载分发。
+on:
+  push:
+    branches: [main]
+    paths: ["clients/**", ".github/workflows/clients.yml"]
+  pull_request:
+    paths: ["clients/**", ".github/workflows/clients.yml"]
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+            name: macos-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+            name: macos-intel
+          - os: windows-latest
+            target: ''
+            args: ''
+            name: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Build
+        working-directory: clients/shell/src-tauri
+        run: cargo tauri build ${{ matrix.args }}
+      - name: Upload artifacts (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: libry-shell-${{ matrix.name }}
+          path: |
+            clients/shell/src-tauri/target/*/bundle/dmg/*.dmg
+            clients/shell/src-tauri/target/*/bundle/macos/*.app.tar.gz
+          if-no-files-found: error
+      - name: Upload artifacts (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: libry-shell-${{ matrix.name }}
+          path: |
+            clients/shell/src-tauri/target/release/bundle/nsis/*.exe
+            clients/shell/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Point NDK_HOME at the runner's preinstalled NDK
+        run: echo "NDK_HOME=$ANDROID_HOME/ndk-bundle" >> "$GITHUB_ENV"
+      - name: Generate Android project
+        working-directory: clients/shell/src-tauri
+        run: cargo tauri android init
+      - name: Apply safe-area patch (MainActivity insets)
+        run: cp clients/android-custom/MainActivity.kt clients/shell/src-tauri/gen/android/app/src/main/java/com/libry/shell/MainActivity.kt
+      - name: Build APK
+        working-directory: clients/shell/src-tauri
+        run: cargo tauri android build --apk
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: libry-shell-android
+          path: clients/shell/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
