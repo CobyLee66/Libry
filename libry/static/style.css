@@ -413,6 +413,39 @@ input, select { font: inherit; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   box-shadow: 0 4px 16px rgba(0,0,0,.2);
 }
+/* 离线横幅可见时抬升 toast，避免互相遮挡 */
+.toast-lifted { bottom: 64px; }
+
+/* 离线模式横幅（全局，恢复在线自动消失） */
+.offline-banner {
+  position: fixed; z-index: 55; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: center; align-items: center; gap: 10px;
+  background: rgba(31,35,41,.92); color: #fff;
+  font-size: 13px; padding: 8px 14px;
+}
+.offline-pending {
+  font-size: 12px; background: rgba(255,255,255,.16);
+  border-radius: 10px; padding: 2px 8px;
+}
+
+/* 离线管理页 */
+.offline-stats {
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  font-size: 13px; color: var(--muted); margin-bottom: 12px;
+}
+.offline-stat strong { color: var(--text); margin-right: 4px; }
+.offline-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.offline-progress {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px;
+}
+.offline-progress-bar { flex: 1; }
+.offline-progress-text { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+.offline-row-meta { display: flex; align-items: center; gap: 8px; }
+.offline-state { font-size: 12px; border-radius: 8px; padding: 2px 8px; }
+.offline-state.current { background: var(--bg); color: var(--muted); }
+.offline-state.stale { background: #fef3c7; color: #92400e; }
+.offline-state.removed { background: #fee2e2; color: #991b1b; }
+.offline-state.unknown { background: var(--bg); color: var(--muted); }
 
 /* 相关页面（阅读页局部关联图 + 相关度列表） */
 .related-panel {

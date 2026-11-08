@@ -166,10 +166,44 @@ window.LibryLocales["en"] = {
     "clear": "Clear filters"
   },
   "type": { "sources": "Sources", "entities": "Entities", "concepts": "Concepts", "synthesis": "Synthesis", "archive": "Archive" },
+  "offline": {
+    "title": "Offline reading",
+    "desc": "Download content visible to this account for offline reading. When online, the latest web content always takes priority — this page only manages the local cache.",
+    "statusTitle": "Local cache",
+    "statDocs": "docs downloaded",
+    "lastSync": "Server content version: {ts}",
+    "storage": "Using {used} of {quota}",
+    "downloadAll": "Download all",
+    "update": "Check for updates",
+    "downloading": "Downloading…",
+    "progress": "Downloading {done}/{total}",
+    "clear": "Clear offline data",
+    "clearConfirm": "Clear all offline content for this account? Cached documents will need to be downloaded again.",
+    "cleared": "Offline data cleared",
+    "done": "Downloaded {n} document(s), removed {removed}",
+    "failedDocs": "{n} document(s) failed to download. You can retry later.",
+    "listTitle": "Downloaded documents",
+    "banner": "Offline mode — reading locally cached content",
+    "pending": "{n} pending sync",
+    "synced": "Synced {n} offline change(s)",
+    "reloginNeeded": "Session expired. Please sign in again to sync offline changes"
+  },
+  "offlineState": {
+    "current": "Up to date",
+    "stale": "Update available",
+    "removed": "Deleted on server",
+    "unknown": "Unverified"
+  },
+  "offlineErr": {
+    "manifest_failed": "Failed to fetch the server manifest. Please retry later (the session may have expired)",
+    "aborted": "Download aborted"
+  },
   "err": {
     "requestFailed": "Request failed ({status})",
     "invalidCredentials": "Incorrect username or password",
-    "adminRequired": "Administrator access required"
+    "adminRequired": "Administrator access required",
+    "offline": "You are offline — this action cannot be completed",
+    "offlineQueued": "You are offline — the change was saved and will sync automatically once back online"
   },
   "api": {
     "rate_limited": "Too many attempts. Please try again later.",
@@ -189,6 +223,7 @@ window.LibryLocales["en"] = {
     "cannot_delete_self": "Cannot delete the account you are signed in with",
     "cannot_delete_last_admin": "Cannot delete the only administrator",
     "auth_required": "Not signed in, or the session has expired",
-    "admin_required": "Administrator access required"
+    "admin_required": "Administrator access required",
+    "offline_not_cached": "This document was not downloaded for offline reading. It will be readable online once the network is back"
   }
 };

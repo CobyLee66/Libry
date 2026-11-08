@@ -46,6 +46,7 @@
     unlock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
     eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
     'eye-off': '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
   };
   const IconIcon = {
     props: { name: { type: String, required: true } },
@@ -61,13 +62,45 @@
     visibility: '', status: 'all', sort: 'created',
   });
 
+  /* 离线写队列白名单：这些端点离线失败时入 outbox（offline.js），恢复在线自动回放；
+     其余写操作（登录/改密/账户管理等）离线时直接报错不入队 */
+  const OUTBOX_PATHS = ['/api/state/', '/api/marks', '/api/bookmarks', '/api/visibility', '/api/deletions'];
+  /* LWW 写端点：离线回放时注入原始动作时间 updated_at（服务端参与跨端 LWW 比较） */
+  const LWW_PATHS = ['/api/state/progress', '/api/marks', '/api/bookmarks', '/api/visibility'];
+
+  let _vm = null;          // api() 向 Vue 实例同步离线状态用
+  let _currentUser = '';   // 离线写队列的归属账户（登录后由 afterSessionKnown 写入）
+
+  function isImeComposing(e) {
+    // 中文输入法组词中的按键（keyCode 229 兼容旧 WebView）是 IME 操作，不是提交意图
+    return e.isComposing || e.keyCode === 229;
+  }
+
   async function api(path, options = {}) {
     const opts = { headers: {}, ...options };
+    const method = opts.method || 'GET';
+    const rawBody = opts.body && typeof opts.body !== 'string' ? opts.body : null;
     if (opts.body && typeof opts.body !== 'string') {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(opts.body);
     }
-    const res = await fetch(path, opts);
+    let res;
+    try {
+      res = await fetch(path, opts);
+      if (_vm) _vm.offline = false;
+    } catch (e) {
+      if (_vm) _vm.offline = true;
+      if (method !== 'GET' && rawBody !== null
+          && OUTBOX_PATHS.some((p) => path.startsWith(p)) && window.LibryOffline) {
+        await LibryOffline.enqueueWrite({
+          url: path, method, body: rawBody,
+          ts: new Date().toISOString(), user: _currentUser,
+        });
+        if (_vm) _vm.outboxCount = await LibryOffline.outboxCount(_currentUser);
+        throw new Error(LibryI18n.t('err.offlineQueued'));
+      }
+      throw new Error(LibryI18n.t('err.offline'));
+    }
     if (res.status === 401) {
       location.hash = '#/login';
       throw new Error('unauthorized');
@@ -127,6 +160,13 @@
         marksData: { progress: [], marks: [] },  // 书签页：自动阅读进度 + 手动书签
         marksLoading: false,
         toast: '',
+        offline: false,           // 离线模式（navigator.onLine 或 API 网络失败时置位，缓存回放）
+        outboxCount: 0,           // 离线写队列待同步条数
+        offlineView: {            // 离线管理页状态
+          busy: false, error: '', lastFailed: [],
+          docs: [], manifest: null, usage: null, lastSync: '',
+          progress: { done: 0, total: 0 },
+        },
         sync: { syncing: false, error: '' },
         syncStatus: null,
         deletions: { items: [] },
@@ -178,6 +218,10 @@
       allGraphTags() {
         return this.meta ? (this.meta.standard_tags || []) : [];
       },
+      offlinePct() {
+        const p = this.offlineView.progress;
+        return p.total ? Math.round((p.done / p.total) * 100) : 0;
+      },
     },
     watch: {
       filters: {
@@ -189,7 +233,13 @@
       },
     },
     mounted() {
+      _vm = this;
       window.addEventListener('hashchange', () => this.route());
+      // 离线状态：监听系统连通性事件；离线恢复在线时自动回放 outbox
+      window.addEventListener('online', () => this.onConnectivityChange(true));
+      window.addEventListener('offline', () => this.onConnectivityChange(false));
+      if (!navigator.onLine) this.offline = true;
+      if (window.LibryOffline) LibryOffline.outboxCount().then((n) => { this.outboxCount = n; });
       // 阅读页滚动方向决定顶栏按钮行收起/展开（仅窄屏有视觉效果）
       window.addEventListener('scroll', this.onDocScroll, { passive: true });
       // 窗口尺寸变化（旋转/拖拽宽度）时重绘画布，避免图形拉伸或留白
@@ -244,6 +294,11 @@
           if (!ok) return;
           this.view = 'marks';
           await this.loadMarks();
+        } else if (hash.startsWith('#/offline')) {
+          const ok = await this.ensureSession();
+          if (!ok) return;
+          this.view = 'offline';
+          await this.loadOfflinePage();
         } else if (hash.startsWith('#/settings')) {
           const ok = await this.ensureSession();
           if (!ok) return;
@@ -269,8 +324,32 @@
           const s = await fetch('/api/session').then(r => r.json());
           if (!s.authenticated) { this.view = 'login'; location.hash = '#/login'; return false; }
           this.user = { name: s.username, admin: !!s.admin };
+          await this.afterSessionKnown();
           return true;
-        } catch (e) { return false; }
+        } catch (e) {
+          // 网络不可达且无缓存会话：有离线库的账户以离线模式进入（读本地缓存内容）
+          if (window.LibryOffline) {
+            const cached = await LibryOffline.currentUser();
+            if (cached) {
+              this.user = { name: cached, admin: false };
+              this.offline = true;
+              await this.afterSessionKnown();
+              return true;
+            }
+          }
+          this.offline = !navigator.onLine;
+          this.view = 'login';
+          return false;
+        }
+      },
+
+      async afterSessionKnown() {
+        // 会话归属确认后：登记离线库当前用户（SW 缓存/回放按它隔离），并趁在线回放积压写操作
+        _currentUser = this.user.name;
+        if (!window.LibryOffline) return;
+        await LibryOffline.setCurrentUser(this.user.name);
+        this.outboxCount = await LibryOffline.outboxCount(_currentUser);
+        if (navigator.onLine && this.outboxCount) await this.flushOutbox();
       },
 
       async doLogin() {
@@ -282,8 +361,10 @@
           });
           this.user = { name: res.username, admin: !!res.admin };
           this.password = '';
+          this.offline = false;
           location.hash = '#/list';
           this.view = 'list';
+          await this.afterSessionKnown();
           await this.loadMeta();
           await this.reloadList(false);
         } catch (e) {
@@ -294,13 +375,29 @@
       },
 
       async doLogout() {
-        try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* ignore */ }
+        try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* 离线登出也继续清理本地 */ }
+        const prevUser = _currentUser;
+        _currentUser = '';
         this.meta = null; this.items = []; this.doc = null;
         this.bookmarks = { items: [], facet: {}, total: 0 };
         this.bmFilterTag = ''; this.bmEditor = null; this.toast = '';
         this.marksData = { progress: [], marks: [] };
         clearTimeout(this._progTimer); this._pendingProg = null;
         this.user = { name: '', admin: false }; this.users = [];
+        this.offline = !navigator.onLine; this.outboxCount = 0;
+        this.offlineView = { busy: false, error: '', lastFailed: [], docs: [],
+                             manifest: null, usage: null, lastSync: '',
+                             progress: { done: 0, total: 0 } };
+        // 离线库按账户清理：文档缓存与清单快照随登出删除（outbox 保留待本人再登录回放）
+        if (window.LibryOffline && prevUser) {
+          await LibryOffline.setCurrentUser(null);
+          await LibryOffline.dropDocs(prevUser);
+          await LibryOffline.saveManifest(prevUser, null);
+          try {
+            const reg = await navigator.serviceWorker.ready;
+            if (reg.active) reg.active.postMessage({ type: 'clear-api-cache' });
+          } catch (e) { /* SW 未就绪时忽略 */ }
+        }
         location.hash = '#/login';
         this.view = 'login';
       },
@@ -647,7 +744,17 @@
           method: 'POST', keepalive: true,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(p),
-        }).catch(() => { /* ignore */ });
+        }).catch(async () => {
+          // 离线：入离线写队列（同 URL 待回放条目合并为最新，与服务端 LWW 语义一致）
+          if (window.LibryOffline) {
+            await LibryOffline.enqueueWrite({
+              url: '/api/state/progress', method: 'POST',
+              body: p, ts: new Date().toISOString(), user: _currentUser,
+            });
+            this.outboxCount = await LibryOffline.outboxCount(_currentUser);
+            this.offline = true;
+          }
+        });
       },
 
       buildToc() {
@@ -783,11 +890,26 @@
       },
 
       handleTagDraft(e) {
+        // IME 组词中的按键是输入法操作，不当作标签分隔（见 docs/frontend-style.md IME 章节）
+        if (isImeComposing(e)) return;
         // 输入逗号/顿号即视为一个标签的结束
         if (e.key === ',' || e.key === '，' || e.key === '、') {
           e.preventDefault();
           this.addBmTag(this.bmEditor && this.bmEditor.draft);
         }
+      },
+
+      tagDraftEnter(e) {
+        // IME 组词中的 Enter 是确认候选：不提交也不 preventDefault（拦截会卡死组词确认）
+        if (isImeComposing(e)) return;
+        e.preventDefault();
+        this.addBmTag(this.bmEditor && this.bmEditor.draft);
+      },
+
+      graphSearchEnter(e) {
+        // IME 组词中的 Enter 是确认候选，不触发定位
+        if (isImeComposing(e)) return;
+        this.locateGraphNode();
       },
 
       async saveBmTags() {
@@ -863,6 +985,108 @@
           await this.loadMarks();
           if (this.meta) await this.loadMeta();
         } catch (e) { this.showToast(e.message); }
+      },
+
+      // ---------------- 离线模式（离线阅读 + 写操作回放） ----------------
+
+      openOffline() {
+        location.hash = '#/offline';
+      },
+
+      async loadOfflinePage() {
+        const v = this.offlineView;
+        if (!window.LibryOffline) return;
+        try {
+          const rows = await LibryOffline.listDocs(this.user.name);
+          const manifest = await LibryOffline.getManifest(this.user.name);
+          const serverHashes = manifest ? (manifest.docs || {}) : null;
+          v.docs = rows.map((r) => ({
+            file: r.file,
+            title: (r.payload && r.payload.meta && r.payload.meta.title) || r.file,
+            size: r.size || 0,
+            state: !serverHashes ? 'unknown'
+              : (!serverHashes[r.file] ? 'removed'
+                : (r.hash && serverHashes[r.file].hash && serverHashes[r.file].hash !== r.hash)
+                  ? 'stale' : 'current'),
+          })).sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+          v.manifest = manifest;
+          v.lastSync = manifest ? manifest.generated_at : '';
+          if (navigator.storage && navigator.storage.estimate) {
+            const est = await navigator.storage.estimate();
+            v.usage = { usage: est.usage || 0, quota: est.quota || 0 };
+          }
+        } catch (e) { /* IDB 不可用等：页面显示空态 */ }
+      },
+
+      async downloadOffline() {
+        if (!window.LibryOffline) return;
+        const v = this.offlineView;
+        v.busy = true; v.error = ''; v.lastFailed = [];
+        v.progress = { done: 0, total: 0 };
+        try {
+          const r = await LibryOffline.syncContent(this.user.name, {
+            onProgress: (p) => { v.progress = p; },
+          });
+          v.lastFailed = r.failed || [];
+          this.showToast(this.t('offline.done', { n: r.downloaded, removed: r.removed }));
+        } catch (e) {
+          v.error = LibryI18n.has('offlineErr.' + e.message)
+            ? this.t('offlineErr.' + e.message) : (e.message || String(e));
+        } finally {
+          v.busy = false;
+          await this.loadOfflinePage();
+        }
+      },
+
+      async clearOfflineData() {
+        if (!window.LibryOffline) return;
+        if (!confirm(this.t('offline.clearConfirm'))) return;
+        await LibryOffline.dropDocs(this.user.name);
+        await LibryOffline.saveManifest(this.user.name, null);
+        this.showToast(this.t('offline.cleared'));
+        await this.loadOfflinePage();
+      },
+
+      async onConnectivityChange(isOnline) {
+        this.offline = !isOnline;
+        if (isOnline) await this.flushOutbox();
+      },
+
+      async flushOutbox() {
+        if (!window.LibryOffline) return;
+        if (!_currentUser) {
+          this.outboxCount = await LibryOffline.outboxCount();
+          return;  // 未登录不回放（回放需要会话）
+        }
+        const r = await LibryOffline.replayOutbox(_currentUser, (item) => {
+          const body = this.replayBody(item);
+          return fetch(item.url, {
+            method: item.method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+        });
+        this.outboxCount = r.remaining;
+        if (r.replayed) this.showToast(this.t('offline.synced', { n: r.replayed }));
+        if (r.auth_expired) {
+          this.showToast(this.t('offline.reloginNeeded'));
+          location.hash = '#/login';
+        }
+      },
+
+      replayBody(item) {
+        // LWW 写端点回放时注入原始动作时间：离线变更与在线多端变更按动作时间正确合并
+        // （服务端 coerce_updated_at 参与比较，未来值钳制，旧客户端不带该字段行为不变）
+        if (!item.body || !LWW_PATHS.some((p) => item.url.startsWith(p))) return item.body;
+        return { ...item.body, updated_at: item.body.updated_at || item.ts };
+      },
+
+      fmtBytes(n) {
+        if (n === null || n === undefined) return '';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let v = n, i = 0;
+        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+        return (i === 0 ? v : v.toFixed(1)) + ' ' + units[i];
       },
 
       fmtPct(p) {

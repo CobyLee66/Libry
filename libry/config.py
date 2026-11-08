@@ -26,6 +26,8 @@ except ModuleNotFoundError:  # pragma: no cover
 WIKI_DIRS = ["sources", "entities", "concepts", "synthesis"]
 DATA_DIR_NAME = ".libry"
 CONFIG_NAME = "libry.toml"
+RAW_DIR_NAME = "raw"
+ASSETS_DIR_NAME = "assets"
 
 
 def _looks_like_vault(p: Path) -> bool:
@@ -63,6 +65,12 @@ class Config:
     @property
     def graph_path(self) -> Path:
         return self.data_dir / "graph.json"
+
+    @property
+    def assets_dir(self) -> Path:
+        """vault 素材目录（raw/assets/）：唯一允许对外服务的 vault 内静态资源目录，
+        raw/ 其余内容（文本原文等）不经任何路由暴露。"""
+        return self.kb_root / RAW_DIR_NAME / ASSETS_DIR_NAME
 
     @property
     def is_vault(self) -> bool:

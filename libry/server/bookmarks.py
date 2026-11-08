@@ -101,35 +101,36 @@ class BookmarkStore:
         with self._lock:
             return {f for f, b in self._user(username).items() if not b.get("deleted")}
 
-    def add(self, username: str, file: str, tags) -> dict:
+    def add(self, username: str, file: str, tags, updated_at: str | None = None) -> dict:
+        """updated_at 为客户端动作时间（离线回放携带，缺省取服务器当前时间）。"""
         with self._lock:
             u = self._user(username)
             existing = u.get(file)
             entry = {
-                "added": (existing or {}).get("added") or _now(),
-                "updated_at": _now(),
+                "added": (existing or {}).get("added") or (updated_at or _now()),
+                "updated_at": updated_at or _now(),
                 "tags": normalize_tags(tags),
             }
             u[file] = entry
             self._save()
             return entry
 
-    def set_tags(self, username: str, file: str, tags):
+    def set_tags(self, username: str, file: str, tags, updated_at: str | None = None):
         with self._lock:
             u = self._user(username)
             if file not in u or u[file].get("deleted"):
                 return None
             u[file]["tags"] = normalize_tags(tags)
-            u[file]["updated_at"] = _now()
+            u[file]["updated_at"] = updated_at or _now()
             self._save()
             return u[file]
 
-    def remove(self, username: str, file: str) -> bool:
+    def remove(self, username: str, file: str, updated_at: str | None = None) -> bool:
         with self._lock:
             u = self._user(username)
             if file not in u or u[file].get("deleted"):
                 return False
-            u[file] = {"deleted": _now()}  # 墓碑：跨端同步不复活已删收藏
+            u[file] = {"deleted": updated_at or _now()}  # 墓碑：跨端同步不复活已删收藏
             self._save()
             return True
 

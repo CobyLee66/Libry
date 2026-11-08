@@ -166,10 +166,44 @@ window.LibryLocales["zh-CN"] = {
     "clear": "清空筛选"
   },
   "type": { "sources": "资料", "entities": "实体", "concepts": "概念", "synthesis": "综合", "archive": "原文" },
+  "offline": {
+    "title": "离线阅读",
+    "desc": "把当前账户可见的内容下载到本地，无网络时也能阅读；有网络时始终优先使用在线最新内容，本页仅管理本地缓存。",
+    "statusTitle": "本地缓存",
+    "statDocs": "篇已下载",
+    "lastSync": "服务器内容版本：{ts}",
+    "storage": "占用 {used} / 配额 {quota}",
+    "downloadAll": "下载全部",
+    "update": "检查并更新",
+    "downloading": "下载中…",
+    "progress": "下载中 {done}/{total}",
+    "clear": "清除离线数据",
+    "clearConfirm": "确定清除本账户的全部离线内容？已缓存的文档删除后需重新下载。",
+    "cleared": "离线数据已清除",
+    "done": "本次下载 {n} 篇，移除 {removed} 篇",
+    "failedDocs": "有 {n} 篇下载失败，可稍后重试",
+    "listTitle": "已下载文档",
+    "banner": "离线模式 — 正在阅读本地缓存内容",
+    "pending": "待同步 {n} 项",
+    "synced": "已同步 {n} 项离线变更",
+    "reloginNeeded": "登录已过期，请重新登录后继续同步离线变更"
+  },
+  "offlineState": {
+    "current": "最新",
+    "stale": "有更新",
+    "removed": "服务器已删除",
+    "unknown": "未核对"
+  },
+  "offlineErr": {
+    "manifest_failed": "获取服务器清单失败，请稍后重试（会话可能已过期）",
+    "aborted": "下载已中止"
+  },
   "err": {
     "requestFailed": "请求失败（{status}）",
     "invalidCredentials": "用户名或密码错误",
-    "adminRequired": "需要管理员权限"
+    "adminRequired": "需要管理员权限",
+    "offline": "当前离线，无法完成该操作",
+    "offlineQueued": "当前离线 — 操作已暂存，恢复网络后自动同步"
   },
   "api": {
     "rate_limited": "尝试过于频繁，请稍后再试",
@@ -189,6 +223,7 @@ window.LibryLocales["zh-CN"] = {
     "cannot_delete_self": "不能删除当前登录账户",
     "cannot_delete_last_admin": "不能删除唯一的管理员",
     "auth_required": "未登录或会话已过期",
-    "admin_required": "需要管理员权限"
+    "admin_required": "需要管理员权限",
+    "offline_not_cached": "该文档未下载到本地，恢复网络后即可在线阅读"
   }
 };

@@ -18,7 +18,9 @@ import nh3
 from ..indexer import normalize_key, split_frontmatter
 
 WIKILINK_RE = re.compile(r"\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]")
-MD_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
+# 「!」负向断言排除图片语法 ![alt](src)：图片保留给消毒层的 src 白名单处理（站内素材可显示），
+# 仅普通链接做 raw/ 降级与站内路由改写
+MD_LINK_RE = re.compile(r"(?<![!\[])\[([^\]]*)\]\(([^)]*)\)")
 
 MD_EXTENSIONS = ["extra", "sane_lists", "toc", "pymdownx.tilde"]
 
@@ -45,7 +47,8 @@ def _convert_wikilinks(body: str, link_map: dict) -> str:
 
 
 def _strip_raw_links(body: str, md_path: Path, kb_root: Path, indexed_files: set) -> str:
-    """raw/ 及未索引的相对 .md 链接降级为纯文本；指向已索引文档的相对链接转站内路由。"""
+    """raw/ 及未索引的相对 .md 链接降级为纯文本；指向已索引文档的相对链接转站内路由。
+    图片语法 ![alt](src) 不在此处理：raw/assets 素材由服务端 /raw/assets 路由提供服务。"""
     def repl(m):
         text, href = m.group(1), m.group(2)
         if "/raw/" in href or href.startswith("../raw"):

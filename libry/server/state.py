@@ -188,8 +188,12 @@ class StateStore:
 
     # ---------------- 阅读进度（自动） ----------------
 
-    def save_progress(self, username: str, file: str, scroll: int, pct: float):
-        """滚动时防抖上报：pct >= 0.98 视为读完，清除该文档进度条目。"""
+    def save_progress(self, username: str, file: str, scroll: int, pct: float,
+                      updated_at: str | None = None):
+        """滚动时防抖上报：pct >= 0.98 视为读完，清除该文档进度条目。
+
+        updated_at 为客户端动作时间（离线回放携带，缺省取服务器当前时间），
+        作为跨端 LWW 的比较依据。"""
         with self._lock:
             progress = self._user(username)["progress"]
             if pct >= 0.98:
@@ -199,7 +203,7 @@ class StateStore:
             else:
                 progress[file] = {"scroll": max(0, int(scroll)),
                                   "pct": min(max(float(pct), 0.0), 1.0),
-                                  "updated_at": _now()}
+                                  "updated_at": updated_at or _now()}
             self._dirty = True
             self._schedule_flush()
 
@@ -215,22 +219,23 @@ class StateStore:
 
     # ---------------- 手动书签 ----------------
 
-    def set_mark(self, username: str, file: str, scroll: int, pct: float) -> dict:
+    def set_mark(self, username: str, file: str, scroll: int, pct: float,
+                 updated_at: str | None = None) -> dict:
         """添加/更新书签（每篇文档一个，记录添加时的滚动位置）。低频显式操作，即时落盘。"""
         with self._lock:
             entry = {"scroll": max(0, int(scroll)),
                      "pct": min(max(float(pct), 0.0), 1.0),
-                     "updated_at": _now()}
+                     "updated_at": updated_at or _now()}
             self._user(username)["marks"][file] = entry
             self._save()
             return entry
 
-    def remove_mark(self, username: str, file: str) -> bool:
+    def remove_mark(self, username: str, file: str, updated_at: str | None = None) -> bool:
         with self._lock:
             marks = self._user(username)["marks"]
             if file not in marks or marks[file].get("deleted"):
                 return False
-            marks[file] = {"deleted": _now()}  # 墓碑：跨端同步不复活已删书签
+            marks[file] = {"deleted": updated_at or _now()}  # 墓碑：跨端同步不复活已删书签
             self._save()
             return True
 

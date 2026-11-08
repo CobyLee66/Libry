@@ -76,15 +76,18 @@ class VisibilityStore:
             e = self._files.get(file)
             return dict(e) if e else None
 
-    def set(self, file: str, visibility: str, owner: str) -> dict:
-        """写入覆盖条目并落盘；personal 必须有 owner，shared 清空 owner。"""
+    def set(self, file: str, visibility: str, owner: str,
+            updated_at: str | None = None) -> dict:
+        """写入覆盖条目并落盘；personal 必须有 owner，shared 清空 owner。
+        updated_at 为客户端动作时间（离线回放携带，缺省取服务器当前时间）。"""
         visibility = normalize_visibility(visibility)
         if visibility == "personal":
             owner = str(owner or "").strip()
         else:
             owner = ""
         with self._lock:
-            entry = {"visibility": visibility, "owner": owner, "updated_at": _now()}
+            entry = {"visibility": visibility, "owner": owner,
+                     "updated_at": updated_at or _now()}
             self._files[file] = entry
             self._save()
             return dict(entry)

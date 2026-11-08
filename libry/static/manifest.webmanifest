@@ -1,0 +1,14 @@
+{
+  "name": "Libry · 书阁",
+  "short_name": "Libry",
+  "description": "AI Agent 维护的个人知识库",
+  "start_url": "/#/list",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

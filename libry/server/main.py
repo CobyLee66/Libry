@@ -5,6 +5,7 @@
     uvicorn libry.server.main:app --host 127.0.0.1 --port 8000
 """
 import atexit
+import hashlib
 import json
 import os
 import subprocess
@@ -25,6 +26,7 @@ from .bookmarks import BookmarkStore
 from .deletions import DeletionStore
 from .render import build_link_map, render_document
 from .state import StateStore
+from .util import coerce_updated_at
 from .visibility import VisibilityStore
 
 _cfg = get_config()
@@ -32,6 +34,7 @@ KB_ROOT = _cfg.kb_root
 DATA_DIR = _cfg.data_dir
 INDEX_PATH = _cfg.index_path
 GRAPH_PATH = _cfg.graph_path
+ASSETS_DIR = _cfg.assets_dir
 STATE_PATH = DATA_DIR / "state.json"
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 # 多机同步脚本随引擎仓库分发（pip 安装缺失时相关端点自动降级）
@@ -72,6 +75,8 @@ deletions = DeletionStore(DATA_DIR / "deletions.json")
 sync_limiter = RateLimiter(max_hits=10, window_sec=60)
 data_sync_limiter = RateLimiter(max_hits=3, window_sec=60)
 purge_limiter = RateLimiter(max_hits=3, window_sec=60)
+# 离线预取通道：整库下载是几十次连发的合法操作，限宽不限死
+offline_limiter = RateLimiter(max_hits=120, window_sec=60)
 
 
 def client_ip(request: Request) -> str:
@@ -365,8 +370,12 @@ async def list_docs(q: str = "", tags: str = "", type: str = "",
     }
 
 
-@app.get("/api/doc")
-async def get_doc(file: str, user: str = Depends(require_session)):
+def _doc_payload(user: str, file: str, mark_read_on_open: bool) -> dict:
+    """阅读页数据：渲染 HTML + meta + 上下篇 + 关联 + 进度/书签状态。
+
+    mark_read_on_open=True（在线浏览）打开即标已读；离线预取通道传 False，
+    批量下载不打扰阅读状态。
+    """
     d = doc_by_file(file)
     if not d:
         raise HTTPException(status_code=404, detail="doc_not_found")
@@ -389,7 +398,8 @@ async def get_doc(file: str, user: str = Depends(require_session)):
                 next_doc = {"file": ordered[i + 1]["file"], "title": ordered[i + 1]["title"]}
             break
 
-    state.mark_read(user, [file])  # 打开即自动标记已读
+    if mark_read_on_open:
+        state.mark_read(user, [file])  # 打开即自动标记已读
     related = [
         {"file": r["file"], "score": r["score"],
          "title": (doc_by_file(r["file"]) or {}).get("title", r["file"]),
@@ -407,6 +417,43 @@ async def get_doc(file: str, user: str = Depends(require_session)):
         "marked": file in state.mark_map(user),          # 是否已有手动书签
         "related": related,
     }
+
+
+@app.get("/api/doc")
+async def get_doc(file: str, user: str = Depends(require_session)):
+    return _doc_payload(user, file, mark_read_on_open=True)
+
+
+@app.get("/api/offline/doc")
+async def offline_doc(request: Request, file: str, user: str = Depends(require_session)):
+    """离线预取通道：与 /api/doc 同构但不产生「已读」副作用。"""
+    if not offline_limiter.allow(client_ip(request)):
+        raise HTTPException(status_code=429, detail="rate_limited")
+    return _doc_payload(user, file, mark_read_on_open=False)
+
+
+@app.get("/api/offline/manifest")
+async def offline_manifest(request: Request, user: str = Depends(require_session)):
+    """离线包清单：当前用户可见文档 → 源文件 sha256，供客户端做增量下载与陈旧清理。
+
+    hash 现场对源 md 计算（个人库规模一次全量读盘可接受），不依赖索引快照的新鲜度。"""
+    if not offline_limiter.allow(client_ip(request)):
+        raise HTTPException(status_code=429, detail="rate_limited")
+    docs = {}
+    for d in get_docs()["docs"]:
+        if not can_see(user, d):
+            continue
+        try:
+            data = (KB_ROOT / d["file"]).read_bytes()
+        except OSError:
+            continue  # 索引在而源文件缺失：跳过，待 reindex 后自愈
+        docs[d["file"]] = {
+            "title": d["title"],
+            "type": d["type"],
+            "updated": d.get("updated") or "",
+            "hash": hashlib.sha256(data).hexdigest(),
+        }
+    return {"generated_at": datetime.now(timezone.utc).isoformat(), "docs": docs}
 
 
 # ---------------- 关联图 ----------------
@@ -499,11 +546,13 @@ def _pos_body(body: dict) -> tuple:
 
 @app.post("/api/state/progress")
 async def save_progress(request: Request, user: str = Depends(require_session)):
-    """滚动时防抖上报阅读进度；pct >= 0.98 视为读完，由 StateStore 清除条目。"""
+    """滚动时防抖上报阅读进度；pct >= 0.98 视为读完，由 StateStore 清除条目。
+    可选 updated_at：离线回放携带的原始动作时间，作为跨端 LWW 依据。"""
     body = await request.json()
     file = _valid_file(str(body.get("file", "")), user)
     scroll, pct = _pos_body(body)
-    state.save_progress(user, file, scroll, pct)
+    state.save_progress(user, file, scroll, pct,
+                        updated_at=coerce_updated_at(body.get("updated_at")))
     return {"ok": True}
 
 
@@ -547,7 +596,8 @@ async def list_bookmarks(tag: str = "", user: str = Depends(require_session)):
 async def add_bookmark(request: Request, user: str = Depends(require_session)):
     body = await request.json()
     file = _valid_file(str(body.get("file", "")), user)
-    entry = bookmarks.add(user, file, body.get("tags") or [])
+    entry = bookmarks.add(user, file, body.get("tags") or [],
+                          updated_at=coerce_updated_at(body.get("updated_at")))
     return {"ok": True, "bookmarked": True,
             "bookmark_tags": entry["tags"], "added": entry["added"]}
 
@@ -556,7 +606,8 @@ async def add_bookmark(request: Request, user: str = Depends(require_session)):
 async def update_bookmark_tags(request: Request, user: str = Depends(require_session)):
     body = await request.json()
     file = _valid_file(str(body.get("file", "")), user)
-    entry = bookmarks.set_tags(user, file, body.get("tags") or [])
+    entry = bookmarks.set_tags(user, file, body.get("tags") or [],
+                               updated_at=coerce_updated_at(body.get("updated_at")))
     if entry is None:
         raise HTTPException(status_code=404, detail="not_bookmarked")
     return {"ok": True, "bookmark_tags": entry["tags"]}
@@ -566,7 +617,8 @@ async def update_bookmark_tags(request: Request, user: str = Depends(require_ses
 async def remove_bookmark(request: Request, user: str = Depends(require_session)):
     body = await request.json()
     file = str(body.get("file", ""))
-    removed = bookmarks.remove(user, file)
+    removed = bookmarks.remove(user, file,
+                               updated_at=coerce_updated_at(body.get("updated_at")))
     return {"ok": True, "bookmarked": False, "removed": removed}
 
 
@@ -597,18 +649,21 @@ async def list_marks(user: str = Depends(require_session)):
 
 @app.post("/api/marks")
 async def set_mark(request: Request, user: str = Depends(require_session)):
-    """添加/更新手动书签（每篇文档一个，记录当前滚动位置）。"""
+    """添加/更新手动书签（每篇文档一个，记录当前滚动位置）。
+    可选 updated_at：离线回放携带的原始动作时间，作为跨端 LWW 依据。"""
     body = await request.json()
     file = _valid_file(str(body.get("file", "")), user)
     scroll, pct = _pos_body(body)
-    entry = state.set_mark(user, file, scroll, pct)
+    entry = state.set_mark(user, file, scroll, pct,
+                           updated_at=coerce_updated_at(body.get("updated_at")))
     return {"ok": True, "marked": True, "updated_at": entry["updated_at"]}
 
 
 @app.delete("/api/marks")
 async def remove_mark(request: Request, user: str = Depends(require_session)):
     body = await request.json()
-    removed = state.remove_mark(user, str(body.get("file", "")))
+    removed = state.remove_mark(user, str(body.get("file", "")),
+                                updated_at=coerce_updated_at(body.get("updated_at")))
     return {"ok": True, "marked": False, "removed": removed}
 
 
@@ -624,7 +679,8 @@ async def set_visibility(request: Request, user: str = Depends(require_session))
     target = str(body.get("visibility", "")).strip().lower()
     if target not in ("shared", "personal"):
         raise HTTPException(status_code=400, detail="bad_visibility")
-    entry = visibility.set(file, target, owner=user)
+    entry = visibility.set(file, target, owner=user,
+                           updated_at=coerce_updated_at(body.get("updated_at")))
     return {"ok": True, "file": file, "visibility": entry["visibility"], "owner": entry["owner"]}
 
 
@@ -833,6 +889,31 @@ async def sync_data_status(user: str = Depends(require_session)):
 
 
 # ---------------- 前端静态文件（最后挂载，API 路由优先） ----------------
+
+class AuthedAssets(StaticFiles):
+    """vault 素材服务（挂 raw/assets/）：要求有效会话，响应 private+no-cache
+    防止共享代理缓存留存认证内容。
+
+    只挂 raw/assets/ 子目录——raw/ 下的文本原文等其余内容不经任何路由暴露
+    （与 render 的 _strip_raw_links「raw 不对外暴露」语义一致）；
+    目录穿越由 StaticFiles 的目录约束兜底。"""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and not auth.current_user(Request(scope)):
+            response = JSONResponse({"detail": "auth_required"}, status_code=401)
+            await response(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        resp = super().file_response(full_path, stat_result, scope, status_code)
+        resp.headers["Cache-Control"] = "private, no-cache"
+        return resp
+
+
+app.mount("/raw/assets", AuthedAssets(directory=str(ASSETS_DIR), check_dir=False),
+          name="assets")
+
 
 class NoCacheStaticFiles(StaticFiles):
     """静态资源每次使用前强制重验（ETag 未变更返回 304，代价极小）。
