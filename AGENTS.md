@@ -23,8 +23,9 @@ libry/                      Python 包（发布单元）
 tools/lint/                 7 个独立可跑的结构检查脚本（`libry lint` 调用）
 deploy/                     install/publish/sync/update + systemd/launchd/cron/Caddy 模板
 scripts/                    定时入库/lint（KB_AGENT_CMD 抽象）+ notify
+clients/                    多端薄壳（Tauri 2：macOS/Windows/Android）——壳内零业务逻辑，离线能力在 Web 层；见 clients/README.md
 tests/                      pytest
-docs/                       部署与接入文档
+docs/                       部署与接入文档（离线架构见 docs/offline.md）
 ```
 
 ## 开发环境与质量门
@@ -52,6 +53,7 @@ shellcheck deploy/*.sh scripts/*.sh  # shell 改动时
 6. **兼容性**：`libry/__main__.py` 的 CLI 子命令是公开接口，改名/去参数要在 CHANGELOG 标 breaking；`.libry/` 五个用户数据文件的 JSON 结构是跨端同步契约，改结构需要写迁移逻辑。
 7. **注释与文档同改**：行为变更同步更新 docstring 与 `docs/`（API 改动更新 `docs/api.md`）。
 8. **登录/凭据表单的密码管理器适配**（2026-09 于 MindTrace 项目本地二分实验实测）：登录表单须为页面加载时可见的唯一凭据 `<form>`；字段带 `name/id="username"|"password"` + `autocomplete="username"|"current-password"`；表单内只放提交按钮——多余 `type="button"` 按钮会致 LastPass 拒填密码（无文本 + 带 aria-label 的眼睛切换按钮可豁免）；注册/改密等隐藏区域用 `v-if` 不渲染（现状即如此）或散装 input，字段 `name` 不与登录表单重复。
+9. **中文输入法（IME）兼容**（2026-10 于 Coby-AI-Learning 项目真机踩坑）：一切「回车提交」的文本输入框处理器首行必须 `if (e.isComposing || e.keyCode === 229) return;`（组词中的 Enter 是确认候选，且确认分支之外不要 preventDefault）；新增输入框优先非受控 + 获焦期 DOM 轮询兜底，关键路径禁依赖 v-model/compositionend 单独兜底；壳侧红线 `captureInput: false`。完整规则与真机验收清单见 `docs/frontend-style.md` IME 章节。
 
 ## 发布流程
 

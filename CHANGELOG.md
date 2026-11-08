@@ -12,7 +12,27 @@ Each entry is bilingual: English first, 中文随行。
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
+### Added
+
+- Offline reading: the web app now works without a network. A hand-written Service Worker keeps an online-first policy (visits always get the latest web code, so web updates never require a client release), caches visited documents and vault images, and an "Offline reading" manager page (`#/offline`) handles bulk download with incremental updates (server-side content hashes), storage usage and per-account clearing. Offline writes (read/unread, progress, position bookmarks, favorites and tags, visibility, deletion marks) queue in an outbox and replay automatically — with their original action timestamps — once back online, merging with other devices under the same LWW semantics. The site can also be installed as a PWA (manifest + icons). See `docs/offline.md`.
+  离线阅读：Web 端支持无网络使用。手写 Service Worker 坚持「在线优先」（在线访问永远拿最新网页代码，网页更新无需发版客户端），自动缓存访问过的文档与 vault 图片；新增「离线阅读」管理页（`#/offline`），支持按内容哈希增量下载全库、查看存储占用、按账户清除。离线期间的写操作（已读/未读、阅读进度、位置书签、收藏及标签、可见性、删除标记）进入 outbox 队列，恢复网络后**携带原始动作时间**自动回放，与在线多端共享同一套 LWW 合并语义。站点可安装为 PWA（manifest + 图标）。详见 `docs/offline.md`。
+- Optional `updated_at` on write endpoints (`POST /api/state/progress`, `POST/DELETE /api/marks`, `POST/PUT/DELETE /api/bookmarks`, `POST /api/visibility`): offline clients replay queued writes with the original action time so cross-device LWW compares action time, not replay time. Server-side fallback to server time keeps old clients unchanged (no breaking change).
+  写端点新增可选 `updated_at`（`POST /api/state/progress`、`POST/DELETE /api/marks`、`POST/PUT/DELETE /api/bookmarks`、`POST /api/visibility`）：离线客户端回放队列时携带原始动作时间，跨端 LWW 按动作时间而非回放时间比较；缺省回退服务器时间，旧客户端行为不变（无破坏性变更）。
+- Vault asset serving: `GET /raw/assets/{path}` now serves vault images (session required, `private, no-cache`; `raw/` text sources remain unexposed). Documents referencing `raw/assets` images (per the vault template convention) display correctly for the first time.
+  vault 素材服务：新增 `GET /raw/assets/{path}`（需会话，`private, no-cache`；`raw/` 下文本原文仍不对外暴露）。按 vault 模板约定引用 `raw/assets` 图片的文档首次得以正常显示。
+- Multi-platform thin clients under `clients/` (macOS / Windows / Android via Tauri 2): a zero-IPC WebView shell with a first-run page for entering your own Libry server URL; offline capability lives entirely in the web layer, so web updates never require a client release. Build instructions in `clients/README.md`, CI artifacts via `.github/workflows/clients.yml`.
+  `clients/` 下新增多端薄壳客户端（Tauri 2，覆盖 macOS / Windows / Android）：零 IPC 的 WebView 容器 + 首启「填写自家服务器地址」页；离线能力全部在 Web 层，网页更新无需发版客户端。构建说明见 `clients/README.md`，CI 产物见 `.github/workflows/clients.yml`。
+
 ### Changed
+
+- Android safe-area handling: the shell's `MainActivity` (template defaults to edge-to-edge) now applies system-bar/cutout/keyboard insets as padding around the WebView, so the status bar, display cutout and gesture bar no longer cover the web content; the revealed strips use the site background color. The patch lives in `clients/android-custom/` and is re-applied by `build-android.sh` and CI on every build.
+  Android 安全区适配：壳的 `MainActivity`（模板默认 edge-to-edge，内容画进系统栏下面）现按「系统栏 + 刘海 + 键盘」insets 给 WebView 打 padding，状态栏/刘海/手势条不再遮挡网页内容，让出的区域填站点底色。补丁位于 `clients/android-custom/`，由 `build-android.sh` 与 CI 每次构建自动应用。
+- Client icons now come from a single source (`libry/static/icon.png`): `clients/scripts/build-icons.sh` regenerates the shell start-page logo, PWA manifest icons and the full Tauri icon set (icns/ico/Android mipmap/iOS AppIcon) from it; the Android build re-syncs launcher icons into the generated project on every build, so icon changes propagate without re-init. The adaptive-icon foreground is re-rendered with the artwork at 2/3 of the canvas (the launcher-visible area), fixing the heavily cropped edges the stock Tauri full-canvas foreground produced; the PWA manifest no longer declares `maskable` for the same reason.
+  客户端图标改为单一来源（`libry/static/icon.png`）：`clients/scripts/build-icons.sh` 从它再生成壳首启页 logo、PWA manifest 图标与 Tauri 全平台图标集（icns/ico/Android mipmap/iOS AppIcon）；Android 构建每次把启动图标同步进生成的工程，图标变更无需重新 init 即可生效。自适应图标前景层按画布 2/3（即启动器可见区）重排——修复 Tauri 默认满画布前景导致的边缘大面积裁剪；PWA manifest 出于同样原因不再声明 `maskable`。
+- `clients/` gains platform build/install scripts modeled after the Coby-AI-Learning project's `scripts/` conventions (OS auto-detection, env-var overrides, pre-flight checks, artifacts under `clients/dist/`): `build-macos.sh`, `build-windows.sh`, `build-android.sh` (build + zipalign + signing + optional auto-install), `install-apk.sh`, `build-icons.sh`. See `clients/scripts/readme.md`.
+  `clients/` 新增各平台构建/安装脚本，约定参照 Coby-AI-Learning 项目的 `scripts/`（操作系统自适应、环境变量覆盖、pre-flight 检查、产物统一 `clients/dist/`）：`build-macos.sh`、`build-windows.sh`、`build-android.sh`（构建 + zipalign + 签名 + 可选自动安装）、`install-apk.sh`、`build-icons.sh`。详见 `clients/scripts/readme.md`。
 
 - Vault template convention: source pages now embed the full original text under `## 原文全文（<version/date>）` instead of prefixing "附录" (Appendix); parallel sections are named after their content (e.g. `## ASR 逐字稿`, `## 评论区`) rather than "附录 A/B". Applies to the generated vault `AGENTS.md`, the bundled `kb-ingest` skill, the `make_appendix.py` helper description and the test fixture; existing vaults are unaffected (old headings stay valid).
   模板规范调整：source 页原文全文的锚点由 `## 附录：原文全文（<版本/日期>）` 改为 `## 原文全文（<版本/日期>）`，不再加「附录」前缀；并列段落直呼内容名（如 `## ASR 逐字稿`、`## 评论区`），不用「附录 A/B」。涉及 `libry init` 生成的 vault `AGENTS.md`、内置 `kb-ingest` skill、`make_appendix.py` 说明与测试夹具；存量 vault 不受影响，旧标题仍视为合法锚点。
@@ -21,6 +41,10 @@ Each entry is bilingual: English first, 中文随行。
 
 - Mobile reader: stabilized the auto-hiding action row on Android by requiring accumulated scroll movement before toggling and adding a top buffer, so small rebound events right after it hides no longer make it flicker open.
   手机端阅读页：工具栏显隐改为按累计滚动位移判断，并在顶部增加缓冲区，修复 Android 上工具栏刚收起时被细碎回弹事件反复展开、快速抖动的问题。
+- Markdown images referencing in-vault assets (`![alt](../raw/assets/….png)`) were stripped down to plain text by the raw-link downgrade pass, so documents never showed their images; the link regex now skips image syntax and images render through the new asset route.
+  引用站内素材的 markdown 图片（`![alt](../raw/assets/….png)`）曾被 raw 链接降级逻辑误剥成纯文本，导致文档图片始终无法显示；链接正则现排除图片语法，图片经新素材路由正常渲染。
+- Chinese IME hardening: Enter-key handlers on the bookmark-tag editor and the graph search box now ignore key events during IME composition (`isComposing`/`keyCode 229`), so confirming a candidate no longer submits prematurely; the rules are documented in `docs/frontend-style.md` for all future text inputs.
+  中文输入法加固：收藏标签编辑框与图谱搜索框的回车处理现忽略组词期间的按键（`isComposing`/`keyCode 229`），确认候选不再误触发提交；规则已写入 `docs/frontend-style.md`，约束后续所有文本输入实现。
 
 ## [0.3.0] - 2026-10-05
 
@@ -111,7 +135,8 @@ First public release.
 - Neutral systemd / launchd / crontab / Caddy templates.
   systemd / launchd / crontab / Caddy 中性模板。
 
-[Unreleased]: https://github.com/CobyLee66/Libry/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/CobyLee66/Libry/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/CobyLee66/Libry/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/CobyLee66/Libry/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/CobyLee66/Libry/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/CobyLee66/Libry/releases/tag/v0.1.0
