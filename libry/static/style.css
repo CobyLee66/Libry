@@ -96,6 +96,13 @@ input, select { font: inherit; }
 .badge-all { background: var(--primary); }
 .badge-new, .badge-unread { background: var(--new); }
 .tab.active .badge { background: rgba(255,255,255,.3); }
+/* 状态行首的过滤按钮：从顶栏移入，窄屏 tab 横向滚动时钉在左侧
+   （背景与行同色，遮住从按钮下方滑过的 tab） */
+.status-tabs .status-filter-btn {
+  align-self: center;
+  position: sticky; left: 0; z-index: 1;
+  background: var(--card);
+}
 
 /* 筛选面板 */
 .filter-panel {

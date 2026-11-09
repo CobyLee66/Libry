@@ -17,6 +17,11 @@ Each entry is bilingual: English first, 中文随行。
 - Offline manager: the downloaded-document list is now a scrollable two-column table (title, size), paginated at 100 per page and sorted by article time (newest first). Dates and status labels are no longer shown, giving most of the width to titles; the list card uses the full content width with reduced side padding, a tinted sticky header and an always-visible custom scrollbar, and a large library no longer renders every downloaded document at once.
   离线管理页：「已下载文档」列表改为可滚动两列表格（标题、大小），每页最多 100 篇，按文章时间倒序（最新在前）；日期与状态标签不再显示，把大部分宽度留给标题。列表卡片加宽并减小侧边距，表头着色且吸顶，右侧常显自定义滚动条；大书库也不再一次性渲染全部已下载文档。
 
+### Changed
+
+- Slimmer top bars: the filter button moved from the list header to the left edge of the status-tab row (pinned there while the tabs scroll horizontally on narrow screens), and the logout and offline-download buttons are gone from every page header. Logout and the offline manager now live as cards on the settings page, freeing width for the search bar on phones.
+  顶栏瘦身：过滤按钮从列表页顶栏移到状态 tab 行最左（窄屏 tab 横向滚动时保持钉住）；所有页面顶栏不再放置退出登录与离线下载按钮。退出登录与离线管理改为设置页中的卡片入口，为手机端搜索框让出宽度。
+
 ### Fixed
 
 - Secondary buttons inside cards (e.g. "Check for updates" on the offline page and "Sync now" in settings) no longer lose their label after a tap on Android. The card button rule paints a blue background while `.btn:hover` turned the text blue too; Android's sticky hover kept that state after the tap (and while the button was disabled). Card buttons now keep white text on hover. The rule is documented in `docs/frontend-style.md`.

@@ -25,7 +25,7 @@ window.LibryLocales["zh-CN"] = {
     "submit": "登录",
     "submitting": "登录中…"
   },
-  "settings": { "title": "设置" },
+  "settings": { "title": "设置", "openOffline": "进入离线管理" },
   "pw": { "show": "显示密码", "hide": "隐藏密码" },
   "pwChange": {
     "title": "修改密码",

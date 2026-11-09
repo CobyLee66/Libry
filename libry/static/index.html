@@ -57,9 +57,6 @@
     <header class="topbar">
       <button class="btn" @click="backToList">{{ t('common.back') }}</button>
       <span class="topbar-title">{{ t('settings.title') }}</span>
-      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
-        <icon name="log-out"></icon>
-      </button>
     </header>
     <main class="settings-body">
       <div class="login-card lang-card">
@@ -67,6 +64,11 @@
         <select class="lang-select" v-model="lang" :title="t('common.language')" :aria-label="t('common.language')">
           <option v-for="l in langs" :key="l.code" :value="l.code">{{ l.name }}</option>
         </select>
+      </div>
+      <div class="login-card">
+        <h1>{{ t('offline.title') }}</h1>
+        <p class="sync-desc">{{ t('offline.desc') }}</p>
+        <button class="btn" @click="openOffline">{{ t('settings.openOffline') }}</button>
       </div>
       <form class="login-card" @submit.prevent="changePassword">
         <h1>{{ t('pwChange.title') }}</h1>
@@ -143,6 +145,12 @@
           {{ purge.running ? t('purge.running') : t('purge.execute', { n: deletions.items.length }) }}
         </button>
       </div>
+
+      <div class="login-card">
+        <h1>{{ t('common.logout') }}</h1>
+        <p class="sync-desc">{{ user.name }}</p>
+        <button class="btn btn-danger" @click="doLogout">{{ t('common.logout') }}</button>
+      </div>
     </main>
   </div>
 
@@ -184,9 +192,6 @@
                 :aria-label="doc.meta.marked_deleted ? t('purge.unmark') : t('doc.markDelete')"
                 @click="toggleDeleteMark">
           <icon name="trash-2"></icon>
-        </button>
-        <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
-          <icon name="log-out"></icon>
         </button>
       </div>
     </header>
@@ -251,9 +256,6 @@
     <header class="topbar">
       <button class="btn" @click="backToList">{{ t('common.back') }}</button>
       <span class="topbar-title">{{ t('bm.title') }}</span>
-      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
-        <icon name="log-out"></icon>
-      </button>
     </header>
 
     <div v-if="bookmarks.facet && Object.keys(bookmarks.facet).length" class="bm-filter">
@@ -302,9 +304,6 @@
     <header class="topbar">
       <button class="btn" @click="backToList">{{ t('common.back') }}</button>
       <span class="topbar-title">{{ t('marks.title') }}</span>
-      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
-        <icon name="log-out"></icon>
-      </button>
     </header>
 
     <main class="bm-list">
@@ -362,9 +361,6 @@
     <header class="topbar">
       <button class="btn" @click="backToList">{{ t('common.back') }}</button>
       <span class="topbar-title">{{ t('graph.title') }}</span>
-      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
-        <icon name="log-out"></icon>
-      </button>
     </header>
     <div class="graph-toolbar">
       <input class="search graph-search" type="search" v-model.trim="gview.q"
@@ -397,9 +393,6 @@
     <header class="topbar">
       <button class="btn" @click="backToList">{{ t('common.back') }}</button>
       <span class="topbar-title">{{ t('offline.title') }}</span>
-      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
-        <icon name="log-out"></icon>
-      </button>
     </header>
     <main class="settings-body">
       <div class="login-card">
@@ -482,10 +475,6 @@
       <img class="header-logo" src="/icon.png" :alt="t('app.logoAlt')">
       <span class="topbar-title">{{ t('app.brand') }}</span>
       <input class="search" type="search" v-model.trim="filters.q" :placeholder="t('list.searchPlaceholder')">
-      <button class="icon-btn" :title="t('list.filter')" :aria-label="t('list.filter')" @click="showFilters = !showFilters">
-        <icon name="filter"></icon>
-        <span v-if="activeFilterCount" class="icon-badge">{{ activeFilterCount }}</span>
-      </button>
       <span class="whoami" :title="t('list.whoami', { name: user.name })">{{ user.name }}</span>
       <button class="icon-btn" :title="t('bm.title')" :aria-label="t('bm.title')" @click="openBookmarks">
         <icon name="star"></icon>
@@ -493,21 +482,19 @@
       <button class="icon-btn" :title="t('marks.title')" :aria-label="t('marks.title')" @click="openMarks">
         <icon name="bookmark"></icon>
       </button>
-      <button class="icon-btn" :title="t('offline.title')" :aria-label="t('offline.title')" @click="openOffline">
-        <icon name="download"></icon>
-      </button>
       <button class="icon-btn" :title="t('graph.title')" :aria-label="t('graph.title')" @click="openGraph">
         <icon name="share-2"></icon>
       </button>
       <button class="icon-btn" :title="t('settings.title')" :aria-label="t('settings.title')" @click="openSettings">
         <icon name="settings"></icon>
       </button>
-      <button class="icon-btn" :title="t('common.logout')" :aria-label="t('common.logout')" @click="doLogout">
-        <icon name="log-out"></icon>
-      </button>
     </header>
 
     <div class="status-tabs">
+      <button class="icon-btn status-filter-btn" :title="t('list.filter')" :aria-label="t('list.filter')" @click="showFilters = !showFilters">
+        <icon name="filter"></icon>
+        <span v-if="activeFilterCount" class="icon-badge">{{ activeFilterCount }}</span>
+      </button>
       <button v-for="st in statusTabs" :key="st.key"
               :class="['tab', {active: filters.status === st.key}]"
               @click="setStatus(st.key)">
