@@ -12,6 +12,11 @@ Each entry is bilingual: English first, 中文随行。
 
 ## [Unreleased]
 
+### Added
+
+- Offline manager: the downloaded-document list is now paginated at 100 per page and sorted by article time (newest first), with the article date shown in each row, so a large library no longer renders every downloaded document at once.
+  离线管理页：「已下载文档」列表改为分页展示（每页最多 100 篇），按文章时间倒序（最新在前），行内显示文章日期；大书库不再一次性渲染全部已下载文档。
+
 ### Fixed
 
 - Secondary buttons inside cards (e.g. "Check for updates" on the offline page and "Sync now" in settings) no longer lose their label after a tap on Android. The card button rule paints a blue background while `.btn:hover` turned the text blue too; Android's sticky hover kept that state after the tap (and while the button was disabled). Card buttons now keep white text on hover. The rule is documented in `docs/frontend-style.md`.

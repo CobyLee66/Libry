@@ -62,6 +62,9 @@
     visibility: '', status: 'all', sort: 'created',
   });
 
+  /* 离线管理页「已下载文档」列表分页大小：只影响界面展示，数据仍完整存于 IndexedDB */
+  const OFFLINE_PAGE_SIZE = 100;
+
   /* 离线写队列白名单：这些端点离线失败时入 outbox（offline.js），恢复在线自动回放；
      其余写操作（登录/改密/账户管理等）离线时直接报错不入队 */
   const OUTBOX_PATHS = ['/api/state/', '/api/marks', '/api/bookmarks', '/api/visibility', '/api/deletions'];
@@ -164,7 +167,7 @@
         outboxCount: 0,           // 离线写队列待同步条数
         offlineView: {            // 离线管理页状态
           busy: false, error: '', lastFailed: [],
-          docs: [], manifest: null, usage: null, lastSync: '',
+          docs: [], page: 1, manifest: null, usage: null, lastSync: '',
           progress: { done: 0, total: 0, waiting: 0 },
         },
         sync: { syncing: false, error: '' },
@@ -221,6 +224,20 @@
       offlinePct() {
         const p = this.offlineView.progress;
         return p.total ? Math.round((p.done / p.total) * 100) : 0;
+      },
+      /* 已下载列表分页：当前页号自动夹在 1..总页数，避免文档增减后停在空页 */
+      offlinePageSize() {
+        return OFFLINE_PAGE_SIZE;
+      },
+      offlinePageCount() {
+        return Math.max(1, Math.ceil(this.offlineView.docs.length / OFFLINE_PAGE_SIZE));
+      },
+      offlinePage() {
+        return Math.min(Math.max(1, this.offlineView.page), this.offlinePageCount);
+      },
+      offlinePageDocs() {
+        const start = (this.offlinePage - 1) * OFFLINE_PAGE_SIZE;
+        return this.offlineView.docs.slice(start, start + OFFLINE_PAGE_SIZE);
       },
     },
     watch: {
@@ -386,7 +403,7 @@
         this.user = { name: '', admin: false }; this.users = [];
         this.offline = !navigator.onLine; this.outboxCount = 0;
         this.offlineView = { busy: false, error: '', lastFailed: [], docs: [],
-                             manifest: null, usage: null, lastSync: '',
+                             page: 1, manifest: null, usage: null, lastSync: '',
                              progress: { done: 0, total: 0, waiting: 0 } };
         // 离线库按账户清理：文档缓存与清单快照随登出删除（outbox 保留待本人再登录回放）
         if (window.LibryOffline && prevUser) {
@@ -993,22 +1010,41 @@
         location.hash = '#/offline';
       },
 
+      changeOfflinePage(delta) {
+        const next = this.offlinePage + delta;
+        if (next < 1 || next > this.offlinePageCount) return;
+        this.offlineView.page = next;
+        this.$nextTick(() => {
+          const el = this.$refs.offlineList;
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      },
+
       async loadOfflinePage() {
         const v = this.offlineView;
         if (!window.LibryOffline) return;
+        v.page = 1;
         try {
           const rows = await LibryOffline.listDocs(this.user.name);
           const manifest = await LibryOffline.getManifest(this.user.name);
           const serverHashes = manifest ? (manifest.docs || {}) : null;
-          v.docs = rows.map((r) => ({
-            file: r.file,
-            title: (r.payload && r.payload.meta && r.payload.meta.title) || r.file,
-            size: r.size || 0,
-            state: !serverHashes ? 'unknown'
-              : (!serverHashes[r.file] ? 'removed'
-                : (r.hash && serverHashes[r.file].hash && serverHashes[r.file].hash !== r.hash)
-                  ? 'stale' : 'current'),
-          })).sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+          v.docs = rows.map((r) => {
+            const meta = (r.payload && r.payload.meta) || {};
+            const created = meta.created ? String(meta.created) : '';
+            const updated = meta.updated ? String(meta.updated) : '';
+            return {
+              file: r.file,
+              title: meta.title || r.file,
+              size: r.size || 0,
+              // 已下载列表按文章时间（优先创建时间）倒序；无日期的排最后
+              date: created || updated || '',
+              state: !serverHashes ? 'unknown'
+                : (!serverHashes[r.file] ? 'removed'
+                  : (r.hash && serverHashes[r.file].hash && serverHashes[r.file].hash !== r.hash)
+                    ? 'stale' : 'current'),
+            };
+          }).sort((a, b) => (b.date || '').localeCompare(a.date || '')
+            || a.title.localeCompare(b.title, 'zh'));
           v.manifest = manifest;
           v.lastSync = manifest ? manifest.generated_at : '';
           if (navigator.storage && navigator.storage.estimate) {

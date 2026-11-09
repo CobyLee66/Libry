@@ -445,7 +445,18 @@ input, select { font: inherit; }
 .offline-progress-bar { flex: 1; }
 .offline-progress-text { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
 .offline-waiting { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
-.offline-row-meta { display: flex; align-items: center; gap: 8px; }
+.offline-list-card { scroll-margin-top: 72px; }
+.offline-list-desc { margin: 0 0 10px; text-align: center; }
+.offline-list-card .user-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.offline-row-meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.offline-pager {
+  display: flex; align-items: center; justify-content: center;
+  flex-wrap: wrap; gap: 10px; margin-top: 14px;
+}
+.offline-page-info { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.offline-pager .btn:disabled { opacity: .5; cursor: default; }
 .offline-state { font-size: 12px; border-radius: 8px; padding: 2px 8px; }
 .offline-state.current { background: var(--bg); color: var(--muted); }
 .offline-state.stale { background: #fef3c7; color: #92400e; }
