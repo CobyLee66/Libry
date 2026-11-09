@@ -25,7 +25,7 @@ window.LibryLocales["en"] = {
     "submit": "Sign in",
     "submitting": "Signing in…"
   },
-  "settings": { "title": "Settings", "openOffline": "Open offline manager" },
+"settings": { "title": "Settings", "openOffline": "Open offline manager", "serverTitle": "Server", "disconnect": "Disconnect and change server" },
   "pw": { "show": "Show password", "hide": "Hide password" },
   "pwChange": {
     "title": "Change Password",

@@ -59,6 +59,13 @@
       <div class="saved" id="savedUrl"></div>
       <button id="btnContinue"></button>
       <button class="ghost" id="btnChange"></button>
+      <p class="hint" id="cardHint"></p>
+    </div>
+
+    <!-- 自动连接 splash：锁定不可点击，探测通过后立即跳转 -->
+    <div id="connectBox" class="hidden">
+      <div class="saved" id="connectUrl"></div>
+      <p class="hint" id="connectHint"></p>
     </div>
 
     <div id="formBox" class="hidden">
@@ -92,6 +99,8 @@
         hintBad: 'Invalid URL — enter the server\'s http(s) address'
       };
       var STORAGE_KEY = 'libry-server';
+      // '1' = 用户在 Web 设置页主动断开过且尚未重新连接，启动时不自动连接
+      var NOAUTO_KEY = 'libry-server-noauto';
       var $ = function (id) { return document.getElementById(id); };
       $('sub').textContent = T.sub;
       $('btnContinue').textContent = T.continueBtn;
@@ -133,30 +142,62 @@
       }
 
       function connect(url) {
-        localStorage.setItem(STORAGE_KEY, url);
-        $('btnContinue').disabled = true;
-        $('btnContinue').textContent = T.connecting;
-        location.replace(url);
+        try {
+          localStorage.setItem(STORAGE_KEY, url);
+          localStorage.removeItem(NOAUTO_KEY);  // 主动连接即恢复自动模式
+        } catch (e) { /* 存储不可用 */ }
+        // 锁定界面：只显示不可点击的连接中状态，随后整页跳转
+        $('savedBox').classList.add('hidden');
+        $('formBox').classList.add('hidden');
+        $('connectBox').classList.remove('hidden');
+        $('connectUrl').textContent = url;
+        $('connectHint').textContent = T.connecting;
+        // 告知 Web 层壳首页地址（各平台 origin 不同，运行时自取），供设置页「断开并更换服务器」跳回
+        var home = '';
+        try { home = location.origin + '/'; } catch (e) { /* 取不到则退化为不带标记 */ }
+        var target = url.replace(/\/+$/, '');
+        location.replace(target + (home ? '/?_libryHome=' + encodeURIComponent(home) : ''));
       }
 
-      var saved = null;
-      try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) { /* 存储不可用 */ }
-      if (saved) {
-        $('savedBox').classList.remove('hidden');
+      function setOfflineNote() {
+        var h = $('cardHint');
+        h.textContent = T.offlineNote;
+        h.className = 'hint';
+      }
+
+      // 上次连接卡片：knownOffline 为 true 时跳过探测直接显示离线提示
+      function showSavedCard(url, knownOffline) {
+        $('connectBox').classList.add('hidden');
         $('formBox').classList.add('hidden');
+        $('savedBox').classList.remove('hidden');
         $('savedUrl').textContent = T.lastUsed + '：' + saved;
-        // 探测可达性：失败仅改提示（离线时仍可直接连接，Service Worker 会回放缓存内容）
-        probe(saved, function () {}, function () {
-          var h = $('formHint');
-          h.textContent = T.offlineNote;
-          h.className = 'hint';
-        });
-        $('btnContinue').onclick = function () { connect(saved); };
-        $('btnChange').onclick = function () { showForm(saved); };
-        var auto = setTimeout(function () { connect(saved); }, 3000);  // 短暂可反悔的自动连接
-        function cancelAuto() { clearTimeout(auto); }
-        $('btnChange').addEventListener('click', cancelAuto);
-        $('savedUrl').addEventListener('click', cancelAuto);
+        if (knownOffline) { setOfflineNote(); return; }
+        // 后台探测可达性：失败仅补充提示（离线时仍可直接连接，Service Worker 会回放缓存内容）
+        probe(url, function () {}, setOfflineNote);
+      }
+
+      $('btnContinue').onclick = function () { if (saved) connect(saved); };
+      $('btnChange').onclick = function () { showForm(saved); };
+
+      var saved = null;
+      var noauto = false;
+      try {
+        saved = localStorage.getItem(STORAGE_KEY);
+        noauto = localStorage.getItem(NOAUTO_KEY) === '1';
+      } catch (e) { /* 存储不可用 */ }
+
+      if (new URLSearchParams(location.search).get('_libryDisconnected') === '1') {
+        // 从 Web 设置页「断开并更换服务器」跳回：记住地址但不再自动连，直接进入选服务器表单
+        try { localStorage.setItem(NOAUTO_KEY, '1'); } catch (e) { /* 存储不可用 */ }
+        showForm('', '');
+      } else if (saved && !noauto) {
+        // 自动连接：先显示锁定的连接中界面，探测可达立即跳转；不可达回落到卡片（不自动连）
+        $('connectBox').classList.remove('hidden');
+        $('connectUrl').textContent = saved;
+        $('connectHint').textContent = T.connecting;
+        probe(saved, function () { connect(saved); }, function () { showSavedCard(saved, true); });
+      } else if (saved) {
+        showSavedCard(saved);
       } else {
         showForm('', '');
       }

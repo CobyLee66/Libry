@@ -12,7 +12,17 @@ Each entry is bilingual: English first, 中文随行。
 
 ## [Unreleased]
 
+### Changed
+
+- The desktop/mobile client now connects instantly on launch when the last server is reachable — the wait-and-choose card is gone, replaced by a locked "Connecting…" screen with nothing to click. When the server is unreachable (offline or down), the app stays on the "Last connected to" card and no longer auto-connects after a countdown; connecting stays a manual choice (offline reading still works from there via the Service Worker cache). The client shell version is bumped to 0.2.0.
+  客户端（桌面/移动壳）启动时只要上次的服务器可达就**立即自动连接**——不再停留 3 秒的选择卡片，取而代之是无可点击元素的「连接中…」锁定界面。服务器不可达（断网或宕机）时停留在「上次连接」卡片，不再倒计时自动连接，是否连接由用户手动决定（离线阅读仍可从那里经 Service Worker 缓存进入）。壳版本号升至 0.2.0。
+
 ### Added
+
+- "Disconnect and change server" on the settings page (visible only inside the client shell): logs out and returns to the shell's server page. The remembered address is kept but no longer auto-connected on launch until you explicitly connect again; switching back to a previous server later keeps its offline downloads.
+  设置页新增「断开连接并更换服务器」（仅客户端壳内显示）：注销当前会话并跳回壳的连接页。记住的服务器地址保留，但在再次主动连接之前启动时不再自动连接；之后切回原服务器时离线下载的缓存仍然保留。
+
+### Fixed
 
 - Offline manager: the downloaded-document list is now a scrollable two-column table (title, size), paginated at 100 per page and sorted by article time (newest first). Dates and status labels are no longer shown, giving most of the width to titles; the list card uses the full content width with reduced side padding, a tinted sticky header and an always-visible custom scrollbar, and a large library no longer renders every downloaded document at once.
   离线管理页：「已下载文档」列表改为可滚动两列表格（标题、大小），每页最多 100 篇，按文章时间倒序（最新在前）；日期与状态标签不再显示，把大部分宽度留给标题。列表卡片加宽并减小侧边距，表头着色且吸顶，右侧常显自定义滚动条；大书库也不再一次性渲染全部已下载文档。
@@ -24,6 +34,8 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Fixed
 
+- Client connection page: the "Server unreachable" hint was written to a hidden element and therefore never actually shown; it now appears on the connection card when the reachability probe fails.
+  客户端连接页：「服务器不可达」提示此前写在隐藏元素上、从未真正显示；现在探测失败时会正常显示在连接卡片上。
 - Secondary buttons inside cards (e.g. "Check for updates" on the offline page and "Sync now" in settings) no longer lose their label after a tap on Android. The card button rule paints a blue background while `.btn:hover` turned the text blue too; Android's sticky hover kept that state after the tap (and while the button was disabled). Card buttons now keep white text on hover. The rule is documented in `docs/frontend-style.md`.
   卡片内的次级按钮（离线页「检查并更新」、设置页「立即同步」等）在 Android 上点击后不再出现无文字状态：卡片按钮规则给蓝底，而 `.btn:hover` 又把文字改成蓝色，触屏的粘滞 hover 让该状态一直保持（按钮处于 disabled 时也一样）。现卡片内 `.btn:hover` 保持白字；规则已写入 `docs/frontend-style.md`。
 - Large first-time offline downloads no longer abort at the per-IP rate limit. The manifest and per-document endpoints now have separate limits (30 vs 600 hits/min/IP), 429 responses carry `Retry-After`, and the client pauses all download workers, shows the remaining seconds, and resumes the current document instead of marking the rest as failed; a second click no longer hits "manifest failed" because the manifest limit was exhausted by document requests. The offline prefetch endpoints also bypass the Service Worker cache fallback (and its 3.5s timeout), so a slow or timed-out prefetch can no longer replay an old document into the local library.

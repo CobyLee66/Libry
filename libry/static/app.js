@@ -135,6 +135,18 @@
     };
   }
 
+  /* 客户端壳首页地址：壳连接页跳转时经 ?_libryHome= 传入并持久化，
+     供设置页「断开连接并更换服务器」跳回壳页；纯浏览器访问没有该值（按钮隐藏）。
+     只接受 http(s)/tauri 协议，防止异常值流入跳转目标。 */
+  const SHELL_HOME_KEY = 'libry-shell-home';
+  const SHELL_HOME_RE = /^(https?|tauri):\/\//i;
+  function readShellHome() {
+    try {
+      const v = localStorage.getItem(SHELL_HOME_KEY);
+      return v && SHELL_HOME_RE.test(v) ? v : '';
+    } catch (e) { return ''; }
+  }
+
   /* 展示层标签（类型/同步/清理结果）经 i18n 字典翻译（type.* / syncResult.* / purgeResult.*），
      底层值保持英文目录名/状态码不变 */
 
@@ -177,6 +189,8 @@
         purge: { running: false, error: '' },
         purgeStatus: null,
         pw: { old: '', next: '', confirm: '', error: '', ok: false, changing: false },
+        shellHome: '',            // 客户端壳首页地址（壳跳转时经 _libryHome 传入；纯浏览器访问为空）
+        serverOrigin: location.origin,
         graphTypes: ['sources', 'entities', 'concepts', 'synthesis', 'archive'],
         relGraphData: null,       // 阅读页局部关联图 {nodes, edges, center}
         relGraphOpen: false,      // 窄屏展开关联图
@@ -249,6 +263,17 @@
     },
     mounted() {
       _vm = this;
+      // 壳接入标记：壳连接页每次连接都带上自身首页地址，存储后从地址栏剥掉（保留 hash 深链）
+      try {
+        const u = new URL(location.href);
+        const home = u.searchParams.get('_libryHome');
+        if (home && SHELL_HOME_RE.test(home)) localStorage.setItem(SHELL_HOME_KEY, home);
+        if (u.searchParams.has('_libryHome')) {
+          u.searchParams.delete('_libryHome');
+          history.replaceState(null, '', u.pathname + u.search + u.hash);
+        }
+      } catch (e) { /* URL/localStorage 不可用时忽略，按无壳处理 */ }
+      this.shellHome = readShellHome();
       window.addEventListener('hashchange', () => this.route());
       // 离线状态：监听系统连通性事件；离线恢复在线时自动回放 outbox
       window.addEventListener('online', () => this.onConnectivityChange(true));
@@ -417,6 +442,15 @@
         }
         location.hash = '#/login';
         this.view = 'login';
+      },
+
+      /* 断开连接并更换服务器（仅客户端壳内可见）：注销会话后跳回壳的连接页。
+         不清理离线库——IndexedDB 按服务器 origin 隔离，切回旧服务器时缓存仍在。
+         壳页收到 _libryDisconnected 标记后保留地址记忆但不再自动连接。 */
+      async disconnectServer() {
+        if (!this.shellHome) return;
+        try { await fetch('/api/logout', { method: 'POST' }); } catch (e) { /* 离线时尽力而为 */ }
+        location.replace(this.shellHome + '?_libryDisconnected=1');
       },
 
       async loadMeta() {

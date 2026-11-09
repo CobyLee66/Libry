@@ -8,7 +8,7 @@ Web 层的 Service Worker + IndexedDB 提供（见 `docs/offline.md`）。
 ```
 clients/
 └── shell/
-    ├── ui/index.html          # 首启/换服务器页（纯静态：localStorage 记地址 + 可达性探测 + 离线继续）
+    ├── ui/index.html          # 首启/换服务器页（纯静态：记地址 + 可达性探测；可达即连、断开后手动）
     └── src-tauri/             # Tauri 2 工程（Rust 侧仅样板代码，无自定义 command）
         ├── src/               #   lib.rs + main.rs（~10 行）
         ├── tauri.conf.json    #   窗口/打包配置；frontendDist 指向 ../ui
@@ -18,8 +18,14 @@ clients/
 设计要点：
 
 - **无 IPC**：壳不定义任何 Tauri command，远程页面默认无 IPC 权限，与浏览器访问同权。
-- **离线首启**：连接过的地址存于壳的 localStorage；服务器不可达时仍可「直接连接」，
-  远端 Service Worker 会回放缓存内容（首次使用前需至少在线登录一次）。
+- **连接策略**：连接过的地址存于壳的 localStorage（`libry-server`）。启动即后台探测可达性：
+  可达就**立即自动连接**（期间只显示锁定的连接中界面，无可点击元素）；不可达（断网/宕机）则
+  停留在「上次连接」卡片，由用户手动决定（点「连接」进入后由远端 Service Worker 回放缓存内容，
+  首次使用前需至少在线登录一次）。
+- **壳 ↔ Web 跳转标记**（跨 origin，只能靠 URL 传）：壳连接时给目标 URL 追加
+  `?_libryHome=<壳首页>`，Web 层存下后供设置页「断开连接并更换服务器」（仅壳内可见）跳回壳页；
+  跳回时带 `?_libryDisconnected=1`，壳保留地址记忆（`libry-server-noauto` 置位）但之后启动
+  不再自动连接，直到用户再次主动连接。
 - **Android 返回键**：默认行为需在真机验证（期望 WebView 内先回退历史、栈底才退出）；
   若与期望不符，在 `src-tauri/gen/android` 的 Activity 中最小化定制。
 - **IME 纪律**（源自 Coby 项目踩坑，详见 `docs/frontend-style.md`）：壳内文本输入

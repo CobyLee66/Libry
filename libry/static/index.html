@@ -151,6 +151,13 @@
         <p class="sync-desc">{{ user.name }}</p>
         <button class="btn btn-danger" @click="doLogout">{{ t('common.logout') }}</button>
       </div>
+
+      <!-- 仅客户端壳内显示（壳跳转时经 _libryHome 传入首页地址）：断开后回到壳的连接页换服务器 -->
+      <div v-if="shellHome" class="login-card">
+        <h1>{{ t('settings.serverTitle') }}</h1>
+        <p class="sync-desc">{{ serverOrigin }}</p>
+        <button class="btn btn-danger" @click="disconnectServer">{{ t('settings.disconnect') }}</button>
+      </div>
     </main>
   </div>
 
