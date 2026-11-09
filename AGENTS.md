@@ -61,6 +61,16 @@ shellcheck deploy/*.sh scripts/*.sh  # shell 改动时
 2. 质量门全绿 → commit → push → 打 tag `vX.Y.Z`。
 3. `deploy/update.sh` 是用户侧升级入口——记得它假定可编辑安装（代码 pull 后重启即生效，依赖变更才重装）。
 
+## 本地签名密钥（各克隆自持，不入库）
+
+Android 壳的 release 签名密钥保存在**各本地克隆**的 `clients/shell/keystore/libry-release.keystore`
+（`clients/.gitignore` 已排除 `shell/keystore/`，严禁提交或上传）。`clients/scripts/build-android.sh`
+默认从该路径读取，密钥就位即零配置；别名与口令见脚本内默认值。
+
+- 新克隆 / 换构建机时：从任一既有克隆（或其备份）把该文件复制到同样路径，**绝不让脚本自动生成新密钥**——
+  签名不一致会使已安装设备无法覆盖升级，被迫卸载重装（丢失壳内服务器记忆、登录会话与离线库）。
+- 所有副本丢失 = 已发布版本永久失去同签名升级能力；建议至少在两台构建机的克隆里各留一份。
+
 ## 文档维护（README / CHANGELOG）
 
 **README 双文件**：`README.md`（英文主）与 `README.zh-CN.md`（中文副）互为镜像，**必须同改同审**——结构、锚点、截图引用一一对应，内容漂移即缺陷。截图只放 `docs/images/readme-*.png`。
