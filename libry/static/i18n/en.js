@@ -184,7 +184,8 @@ window.LibryLocales["en"] = {
     "done": "Downloaded {n} document(s), removed {removed}",
     "failedDocs": "{n} document(s) failed to download. You can retry later.",
     "listTitle": "Downloaded documents",
-    "listHint": "Up to {n} per page, newest first by article date",
+    "colTitle": "Title",
+    "colSize": "Size",
     "pagePrev": "Previous",
     "pageNext": "Next",
     "pageInfo": "Page {page} of {pages} · {total} documents",
@@ -192,12 +193,6 @@ window.LibryLocales["en"] = {
     "pending": "{n} pending sync",
     "synced": "Synced {n} offline change(s)",
     "reloginNeeded": "Session expired. Please sign in again to sync offline changes"
-  },
-  "offlineState": {
-    "current": "Up to date",
-    "stale": "Update available",
-    "removed": "Deleted on server",
-    "unknown": "Unverified"
   },
   "offlineErr": {
     "manifest_failed": "Failed to fetch the server manifest. Please retry later",

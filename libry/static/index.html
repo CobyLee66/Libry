@@ -438,14 +438,23 @@
       </div>
       <div v-if="offlineView.docs.length" ref="offlineList" class="login-card offline-list-card">
         <h1>{{ t('offline.listTitle') }}</h1>
-        <p class="sync-desc offline-list-desc">{{ t('offline.listHint', { n: offlinePageSize }) }}</p>
-        <div v-for="d in offlinePageDocs" :key="d.file" class="user-row">
-          <a class="user-name" :href="'#/doc/' + encodeURIComponent(d.file)">{{ d.title }}</a>
-          <span class="offline-row-meta">
-            <span v-if="d.date" class="doc-date">{{ fmtSyncTs(d.date) }}</span>
-            <span v-if="d.size" class="doc-date">{{ fmtBytes(d.size) }}</span>
-            <span :class="['offline-state', d.state]">{{ t('offlineState.' + d.state) }}</span>
-          </span>
+        <div ref="offlineTable" class="offline-table-wrap">
+          <table class="offline-table">
+            <thead>
+              <tr>
+                <th>{{ t('offline.colTitle') }}</th>
+                <th class="offline-col-size">{{ t('offline.colSize') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in offlinePageDocs" :key="d.file">
+                <td class="offline-title-cell">
+                  <a :href="'#/doc/' + encodeURIComponent(d.file)" :title="d.title">{{ d.title }}</a>
+                </td>
+                <td class="offline-col-size">{{ fmtBytes(d.size) }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
         <div v-if="offlinePageCount > 1" class="offline-pager">
           <button class="btn small-btn" @click="changeOfflinePage(-1)" :disabled="offlinePage <= 1">

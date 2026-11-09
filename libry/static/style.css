@@ -446,22 +446,35 @@ input, select { font: inherit; }
 .offline-progress-text { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
 .offline-waiting { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 .offline-list-card { scroll-margin-top: 72px; }
-.offline-list-desc { margin: 0 0 10px; text-align: center; }
-.offline-list-card .user-name {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.offline-table-wrap {
+  max-height: min(60vh, 560px); overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 8px;
+  -webkit-overflow-scrolling: touch;
 }
-.offline-row-meta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.offline-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.offline-table th, .offline-table td {
+  padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left;
+}
+.offline-table th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--card); color: var(--muted);
+  font-size: 13px; font-weight: 600;
+}
+.offline-table tbody tr:last-child td { border-bottom: none; }
+.offline-table tbody tr:hover td { background: var(--bg); }
+.offline-table .offline-col-size { width: 72px; text-align: right; white-space: nowrap; }
+.offline-title-cell a {
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text);
+}
+.offline-title-cell a:hover { color: var(--primary); }
+.offline-col-size { color: var(--muted); font-size: 13px; }
 .offline-pager {
   display: flex; align-items: center; justify-content: center;
   flex-wrap: wrap; gap: 10px; margin-top: 14px;
 }
 .offline-page-info { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .offline-pager .btn:disabled { opacity: .5; cursor: default; }
-.offline-state { font-size: 12px; border-radius: 8px; padding: 2px 8px; }
-.offline-state.current { background: var(--bg); color: var(--muted); }
-.offline-state.stale { background: #fef3c7; color: #92400e; }
-.offline-state.removed { background: #fee2e2; color: #991b1b; }
-.offline-state.unknown { background: var(--bg); color: var(--muted); }
 
 /* 相关页面（阅读页局部关联图 + 相关度列表） */
 .related-panel {

@@ -14,8 +14,8 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Added
 
-- Offline manager: the downloaded-document list is now paginated at 100 per page and sorted by article time (newest first), with the article date shown in each row, so a large library no longer renders every downloaded document at once.
-  离线管理页：「已下载文档」列表改为分页展示（每页最多 100 篇），按文章时间倒序（最新在前），行内显示文章日期；大书库不再一次性渲染全部已下载文档。
+- Offline manager: the downloaded-document list is now a scrollable two-column table (title, size), paginated at 100 per page and sorted by article time (newest first). Dates and status labels are no longer shown, giving most of the width to titles, and a large library no longer renders every downloaded document at once.
+  离线管理页：「已下载文档」列表改为可滚动两列表格（标题、大小），每页最多 100 篇，按文章时间倒序（最新在前）；日期与状态标签不再显示，把大部分宽度留给标题，大书库也不再一次性渲染全部已下载文档。
 
 ### Fixed
 

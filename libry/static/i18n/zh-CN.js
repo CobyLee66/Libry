@@ -184,7 +184,8 @@ window.LibryLocales["zh-CN"] = {
     "done": "本次下载 {n} 篇，移除 {removed} 篇",
     "failedDocs": "有 {n} 篇下载失败，可稍后重试",
     "listTitle": "已下载文档",
-    "listHint": "每页最多 {n} 篇，按文章时间倒序（最新在前）",
+    "colTitle": "标题",
+    "colSize": "大小",
     "pagePrev": "上一页",
     "pageNext": "下一页",
     "pageInfo": "第 {page} / {pages} 页 · 共 {total} 篇",
@@ -192,12 +193,6 @@ window.LibryLocales["zh-CN"] = {
     "pending": "待同步 {n} 项",
     "synced": "已同步 {n} 项离线变更",
     "reloginNeeded": "登录已过期，请重新登录后继续同步离线变更"
-  },
-  "offlineState": {
-    "current": "最新",
-    "stale": "有更新",
-    "removed": "服务器已删除",
-    "unknown": "未核对"
   },
   "offlineErr": {
     "manifest_failed": "获取服务器清单失败，请稍后重试",

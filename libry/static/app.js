@@ -226,9 +226,6 @@
         return p.total ? Math.round((p.done / p.total) * 100) : 0;
       },
       /* 已下载列表分页：当前页号自动夹在 1..总页数，避免文档增减后停在空页 */
-      offlinePageSize() {
-        return OFFLINE_PAGE_SIZE;
-      },
       offlinePageCount() {
         return Math.max(1, Math.ceil(this.offlineView.docs.length / OFFLINE_PAGE_SIZE));
       },
@@ -1015,6 +1012,8 @@
         if (next < 1 || next > this.offlinePageCount) return;
         this.offlineView.page = next;
         this.$nextTick(() => {
+          const table = this.$refs.offlineTable;
+          if (table) table.scrollTop = 0;
           const el = this.$refs.offlineList;
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
@@ -1027,7 +1026,6 @@
         try {
           const rows = await LibryOffline.listDocs(this.user.name);
           const manifest = await LibryOffline.getManifest(this.user.name);
-          const serverHashes = manifest ? (manifest.docs || {}) : null;
           v.docs = rows.map((r) => {
             const meta = (r.payload && r.payload.meta) || {};
             const created = meta.created ? String(meta.created) : '';
@@ -1036,14 +1034,10 @@
               file: r.file,
               title: meta.title || r.file,
               size: r.size || 0,
-              // 已下载列表按文章时间（优先创建时间）倒序；无日期的排最后
-              date: created || updated || '',
-              state: !serverHashes ? 'unknown'
-                : (!serverHashes[r.file] ? 'removed'
-                  : (r.hash && serverHashes[r.file].hash && serverHashes[r.file].hash !== r.hash)
-                    ? 'stale' : 'current'),
+              // 表格不显示日期，但排序仍按文章时间（优先创建时间）倒序
+              sortTs: created || updated || '',
             };
-          }).sort((a, b) => (b.date || '').localeCompare(a.date || '')
+          }).sort((a, b) => (b.sortTs || '').localeCompare(a.sortTs || '')
             || a.title.localeCompare(b.title, 'zh'));
           v.manifest = manifest;
           v.lastSync = manifest ? manifest.generated_at : '';
@@ -1051,6 +1045,10 @@
             const est = await navigator.storage.estimate();
             v.usage = { usage: est.usage || 0, quota: est.quota || 0 };
           }
+          this.$nextTick(() => {
+            const table = this.$refs.offlineTable;
+            if (table) table.scrollTop = 0;
+          });
         } catch (e) { /* IDB 不可用等：页面显示空态 */ }
       },
 
