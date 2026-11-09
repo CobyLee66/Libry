@@ -75,8 +75,11 @@ deletions = DeletionStore(DATA_DIR / "deletions.json")
 sync_limiter = RateLimiter(max_hits=10, window_sec=60)
 data_sync_limiter = RateLimiter(max_hits=3, window_sec=60)
 purge_limiter = RateLimiter(max_hits=3, window_sec=60)
-# 离线预取通道：整库下载是几十次连发的合法操作，限宽不限死
-offline_limiter = RateLimiter(max_hits=120, window_sec=60)
+# 离线预取通道：整库下载是几十次连发的合法操作，限宽不限死。
+# 清单与逐篇独立限速——整库同步会把逐篇端点打到上限，不能连带把清单端点也耗尽
+# （否则用户重试时连清单都拿不到，只能看到“获取服务器清单失败”）。
+offline_manifest_limiter = RateLimiter(max_hits=30, window_sec=60)
+offline_doc_limiter = RateLimiter(max_hits=600, window_sec=60)
 
 
 def client_ip(request: Request) -> str:
@@ -87,6 +90,16 @@ def client_ip(request: Request) -> str:
         if xff:
             return xff.split(",")[0].strip()
     return direct
+
+
+def _enforce_rate_limit(limiter: RateLimiter, request: Request) -> None:
+    """超限时返回 429 + Retry-After（秒），供离线下载客户端等待后续传。"""
+    ip = client_ip(request)
+    if limiter.allow(ip):
+        return
+    retry_after = max(1, limiter.retry_after(ip))
+    raise HTTPException(status_code=429, detail="rate_limited",
+                        headers={"Retry-After": str(retry_after)})
 
 
 _index_lock = threading.Lock()
@@ -427,8 +440,7 @@ async def get_doc(file: str, user: str = Depends(require_session)):
 @app.get("/api/offline/doc")
 async def offline_doc(request: Request, file: str, user: str = Depends(require_session)):
     """离线预取通道：与 /api/doc 同构但不产生「已读」副作用。"""
-    if not offline_limiter.allow(client_ip(request)):
-        raise HTTPException(status_code=429, detail="rate_limited")
+    _enforce_rate_limit(offline_doc_limiter, request)
     return _doc_payload(user, file, mark_read_on_open=False)
 
 
@@ -437,8 +449,7 @@ async def offline_manifest(request: Request, user: str = Depends(require_session
     """离线包清单：当前用户可见文档 → 源文件 sha256，供客户端做增量下载与陈旧清理。
 
     hash 现场对源 md 计算（个人库规模一次全量读盘可接受），不依赖索引快照的新鲜度。"""
-    if not offline_limiter.allow(client_ip(request)):
-        raise HTTPException(status_code=429, detail="rate_limited")
+    _enforce_rate_limit(offline_manifest_limiter, request)
     docs = {}
     for d in get_docs()["docs"]:
         if not can_see(user, d):

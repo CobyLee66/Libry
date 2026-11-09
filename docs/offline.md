@@ -29,6 +29,7 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 |---|---|---|
 | 导航与壳资源（html/js/css/i18n/vendor/icon/manifest） | network-first（3.5s 超时）→ 缓存回退 | 在线=最新代码；SW 激活时解析首页引用做一次壳预缓存，保证「首次访问即断网」也能离线拉起 |
 | `/api/doc?file=` | network-first → 成功时写入离线库（**访问即缓存层**）；失败回放离线库 | 访问过的文档自动具备离线能力 |
+| `/api/offline/*` | 直通网络（不缓存、不回放，`cache: 'no-store'`） | 预取通道由 IndexedDB 管理；避免 3.5s 超时截断整库下载、超时后回放旧文档被按新 hash 保存，以及 API Cache 重复占用整库空间 |
 | 其余 `/api/` GET（meta/docs/session/bookmarks/marks…） | network-first → 缓存回退 | 离线启动时 `/api/session` 的缓存回放使应用无需强制登录即可进入 |
 | `/raw/assets/` | stale-while-revalidate | 素材约定不可变；离线显示缓存副本 |
 | 非 GET（写请求） | 不拦截 | 离线失败由应用层 outbox 排队（见下） |
@@ -53,7 +54,7 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 1. 客户端 `GET /api/offline/manifest` → `{generated_at, docs: {file: {title, type, updated, hash}}}`（hash 为源 md 的 sha256，服务端现场计算，不依赖索引新鲜度）。
 2. 与本地 `docs` 按 `hash` 求差：新/变篇下载（`GET /api/offline/doc`），消失篇删除；hash 为空的本地记录（访问即缓存的）视为未验证、重新拉取。
 3. 每篇下载后解析 HTML 中 `img[src]` 提取 `/raw/assets/` 引用逐个抓取（SW 的 SWR 策略顺手写缓存）。
-4. 并发 3 节流，服务端另有离线端点限速（120 次/分/IP）；单篇失败不阻塞整库，结果上报。
+4. 并发 3 节流；服务端离线端点独立限速（清单 30 次/分/IP、逐篇 600 次/分/IP），429 响应带 `Retry-After`，客户端按它暂停（进度条下方提示等待秒数）后自动续传，已下载内容保留；单篇 4xx/5xx/网络失败不阻塞整库，结果上报。
 
 ## 离线写队列（outbox）与冲突语义
 

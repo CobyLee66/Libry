@@ -36,6 +36,10 @@ input, select { font: inherit; }
   padding: 10px; border: none; border-radius: 8px;
   background: var(--primary); color: #fff;
 }
+/* 卡片内 .btn 的蓝底由上面的规则接管；.btn:hover 会再把文字改成 --primary，
+   与蓝底同色后按钮看起来没有文字。Android 触屏的粘滞 hover 会让点击后的
+   按钮长期保持该状态（“检查并更新”“立即同步”等按钮均会中招），故保持白字。 */
+.login-card .btn:hover { color: #fff; }
 .error { color: var(--new); margin: 0; font-size: 13px; }
 
 /* 顶栏 */
@@ -440,6 +444,7 @@ input, select { font: inherit; }
 }
 .offline-progress-bar { flex: 1; }
 .offline-progress-text { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+.offline-waiting { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 .offline-row-meta { display: flex; align-items: center; gap: 8px; }
 .offline-state { font-size: 12px; border-radius: 8px; padding: 2px 8px; }
 .offline-state.current { background: var(--bg); color: var(--muted); }

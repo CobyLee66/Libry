@@ -48,6 +48,13 @@ self.addEventListener('activate', (event) => {
     for (const name of await caches.keys()) {
       if (!CACHES.includes(name)) await caches.delete(name);
     }
+    // 旧版本曾把离线预取响应缓存进 API Cache；现在改为直通，清掉升级前遗留副本
+    const apiCache = await caches.open(API_CACHE);
+    for (const req of await apiCache.keys()) {
+      if (new URL(req.url).pathname.startsWith('/api/offline/')) {
+        await apiCache.delete(req);
+      }
+    }
     await self.clients.claim();
     precacheShell();
   })());
@@ -135,6 +142,13 @@ self.addEventListener('fetch', (event) => {
 
   if (path.startsWith('/raw/assets/')) {
     event.respondWith(staleWhileRevalidate(req, ASSET_CACHE));
+    return;
+  }
+  if (path.startsWith('/api/offline/')) {
+    // 离线预取通道由 IndexedDB 管理：直通网络，不缓存/不回放。
+    // network-first 的 3.5s 超时与缓存回退会截断整库下载、回放旧文档（被按新 hash 保存），
+    // 并在 API Cache 里重复占用一份整库空间。
+    event.respondWith(fetch(req, { cache: 'no-store' }));
     return;
   }
   if (path === '/api/doc') {

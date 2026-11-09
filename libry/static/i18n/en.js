@@ -177,6 +177,7 @@ window.LibryLocales["en"] = {
     "update": "Check for updates",
     "downloading": "Downloading…",
     "progress": "Downloading {done}/{total}",
+    "waiting": "Server rate limit — resuming in {s}s…",
     "clear": "Clear offline data",
     "clearConfirm": "Clear all offline content for this account? Cached documents will need to be downloaded again.",
     "cleared": "Offline data cleared",
@@ -195,7 +196,10 @@ window.LibryLocales["en"] = {
     "unknown": "Unverified"
   },
   "offlineErr": {
-    "manifest_failed": "Failed to fetch the server manifest. Please retry later (the session may have expired)",
+    "manifest_failed": "Failed to fetch the server manifest. Please retry later",
+    "rate_limited": "The server is rate-limiting downloads. Downloaded content is kept — please retry later",
+    "auth_required": "Your session has expired. Please sign in again",
+    "network_failed": "Network unavailable. Check your connection and try again",
     "aborted": "Download aborted"
   },
   "err": {

@@ -12,6 +12,13 @@ Each entry is bilingual: English first, 中文随行。
 
 ## [Unreleased]
 
+### Fixed
+
+- Secondary buttons inside cards (e.g. "Check for updates" on the offline page and "Sync now" in settings) no longer lose their label after a tap on Android. The card button rule paints a blue background while `.btn:hover` turned the text blue too; Android's sticky hover kept that state after the tap (and while the button was disabled). Card buttons now keep white text on hover. The rule is documented in `docs/frontend-style.md`.
+  卡片内的次级按钮（离线页「检查并更新」、设置页「立即同步」等）在 Android 上点击后不再出现无文字状态：卡片按钮规则给蓝底，而 `.btn:hover` 又把文字改成蓝色，触屏的粘滞 hover 让该状态一直保持（按钮处于 disabled 时也一样）。现卡片内 `.btn:hover` 保持白字；规则已写入 `docs/frontend-style.md`。
+- Large first-time offline downloads no longer abort at the per-IP rate limit. The manifest and per-document endpoints now have separate limits (30 vs 600 hits/min/IP), 429 responses carry `Retry-After`, and the client pauses all download workers, shows the remaining seconds, and resumes the current document instead of marking the rest as failed; a second click no longer hits "manifest failed" because the manifest limit was exhausted by document requests. The offline prefetch endpoints also bypass the Service Worker cache fallback (and its 3.5s timeout), so a slow or timed-out prefetch can no longer replay an old document into the local library.
+  首次整库离线下载不再被每 IP 限速截断：清单与逐篇端点改为独立限速（30 / 600 次/分/IP），429 响应带 `Retry-After`，客户端会暂停所有下载 worker、显示剩余秒数，并在等待后重试当前篇目，而不是把剩余文章记为失败；第二次点击也不会再因清单端点被逐篇请求耗尽而报「获取服务器清单失败」。离线预取端点同时绕过 Service Worker 的缓存回退（及其 3.5 秒超时），避免慢请求或超时把旧文档回放成本地的新版本。
+
 ## [0.4.0] - 2026-11-09
 
 ### Added

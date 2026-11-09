@@ -429,6 +429,9 @@
           <span class="progress-bar offline-progress-bar"><i :style="{width: offlinePct + '%'}"></i></span>
           <span class="offline-progress-text">{{ t('offline.progress', { done: offlineView.progress.done, total: offlineView.progress.total }) }}</span>
         </div>
+        <p v-if="offlineView.busy && offlineView.progress.waiting" class="offline-waiting">
+          {{ t('offline.waiting', { s: offlineView.progress.waiting }) }}
+        </p>
         <p v-if="offlineView.lastFailed && offlineView.lastFailed.length" class="error">
           {{ t('offline.failedDocs', { n: offlineView.lastFailed.length }) }}
         </p>

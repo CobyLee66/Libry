@@ -15,6 +15,9 @@
   const ST_META = 'meta';
   const ST_OUTBOX = 'outbox';
   const DOWNLOAD_CONCURRENCY = 3;  // 对服务器友好；移动端弱网下也不至于打满
+  const RATE_LIMIT_MAX_RETRIES = 5;   // 单个请求被限速后最多重试几轮
+  const RATE_LIMIT_FALLBACK_SEC = 5;  // 服务端未给 Retry-After 时的指数退避起点
+  const RATE_LIMIT_MAX_WAIT_SEC = 120; // 单次等待上限，防止异常响应让下载无限挂起
 
   let dbPromise = null;
 
@@ -70,6 +73,34 @@
   function userRange(user) {
     // file 路径不会包含 U+FFFF，bound 前闭后闭即覆盖该用户全部记录
     return IDBKeyRange.bound([user, ''], [user, '\uffff']);
+  }
+
+  /* Retry-After 解析：服务端按秒返回；兼容 HTTP date 形态；上限保护 */
+  function parseRetryAfter(res) {
+    const raw = res.headers.get('Retry-After');
+    if (!raw) return 0;
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds)) {
+      return Math.max(0, Math.min(RATE_LIMIT_MAX_WAIT_SEC, seconds));
+    }
+    const at = Date.parse(raw);
+    if (!Number.isNaN(at)) {
+      return Math.max(0, Math.min(RATE_LIMIT_MAX_WAIT_SEC, (at - Date.now()) / 1000));
+    }
+    return 0;
+  }
+
+  function sleep(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal && signal.aborted) { reject(new Error('aborted')); return; }
+      let timer = null;
+      const onAbort = () => { clearTimeout(timer); reject(new Error('aborted')); };
+      timer = setTimeout(() => {
+        if (signal) signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    });
   }
 
   /* 从渲染 HTML 中提取站内素材路径（raw/assets/ 下，SW 的素材策略会顺手写缓存） */
@@ -172,9 +203,59 @@
       const check = () => { if (signal && signal.aborted) throw new Error('aborted'); };
       check();
 
-      const res = await fetch('/api/offline/manifest');
+      let fatal = null;
+      // 共享限速闸门：任一 worker 收到 429 后所有 worker 一起暂停，等 Retry-After
+      // 过去再重试当前篇目，避免 3 个并发持续把滑动窗口打满、把合法请求记成失败。
+      let gateUntil = 0;
+      let done = 0;
+      let total = 0;
+      const emit = (ctx) => {
+        const waiting = Math.max(0, Math.ceil((gateUntil - Date.now()) / 1000));
+        onProgress({
+          done,
+          total,
+          file: (ctx && ctx.file) || '',
+          waiting: Math.min(waiting, RATE_LIMIT_MAX_WAIT_SEC),
+        });
+      };
+      const waitGate = async (ctx) => {
+        if (gateUntil <= Date.now()) return;
+        while (gateUntil > Date.now()) {
+          if (fatal) throw fatal;
+          check();
+          emit(ctx);
+          await sleep(Math.min(1000, Math.max(1, gateUntil - Date.now())), signal);
+        }
+        emit(ctx);
+      };
+      const fetchRateLimited = async (url, ctx) => {
+        let attempt = 0;
+        for (;;) {
+          await waitGate(ctx);
+          if (fatal) throw fatal;
+          check();
+          const res = await fetch(url, { cache: 'no-store' });
+          if (res.status !== 429) return res;
+          attempt++;
+          if (attempt > RATE_LIMIT_MAX_RETRIES) throw new Error('rate_limited');
+          const wait = parseRetryAfter(res) || Math.min(
+            RATE_LIMIT_MAX_WAIT_SEC,
+            RATE_LIMIT_FALLBACK_SEC * Math.pow(2, attempt - 1));
+          gateUntil = Math.max(gateUntil, Date.now() + wait * 1000);
+        }
+      };
+
+      let res;
+      try {
+        res = await fetchRateLimited('/api/offline/manifest', { file: '' });
+      } catch (e) {
+        if (e.message === 'aborted' || e.message === 'rate_limited') throw e;
+        throw new Error('network_failed');
+      }
+      if (res.status === 401) throw new Error('auth_required');
       if (!res.ok) throw new Error('manifest_failed');
-      const manifest = await res.json();
+      let manifest;
+      try { manifest = await res.json(); } catch (e) { throw new Error('manifest_failed'); }
       const serverDocs = manifest.docs || {};
 
       const existing = await this.listDocs(user);
@@ -190,16 +271,20 @@
         }
       }
 
-      let done = 0;
       const failed = [];
-      onProgress({ done, total: toFetch.length, file: '' });
+      total = toFetch.length;
+      emit({ file: '' });
       let cursor = 0;
       const worker = async () => {
         while (cursor < toFetch.length) {
+          if (fatal) break;
           check();
           const job = toFetch[cursor++];
+          const ctx = { file: job.file };
           try {
-            const r = await fetch('/api/offline/doc?file=' + encodeURIComponent(job.file));
+            const r = await fetchRateLimited(
+              '/api/offline/doc?file=' + encodeURIComponent(job.file), ctx);
+            if (r.status === 401) throw new Error('auth_required');
             if (!r.ok) throw new Error('doc_fetch_failed');
             const payload = await r.json();
             await this.saveDoc(user, job.file, job.hash, payload);
@@ -208,15 +293,20 @@
               await fetch(asset).catch(() => { /* 素材缺失离线时显示裂图，不阻塞 */ });
             }
           } catch (e) {
-            if (signal && signal.aborted) throw e;
+            if (signal && signal.aborted) { fatal = fatal || new Error('aborted'); break; }
+            if (e.message === 'auth_required' || e.message === 'rate_limited') {
+              fatal = fatal || e;
+              break;
+            }
             failed.push(job.file);  // 单篇失败不拖垮整库，结果里上报
           }
           done++;
-          onProgress({ done, total: toFetch.length, file: job.file });
+          emit(ctx);
         }
       };
       await Promise.all(
         Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, toFetch.length) }, worker));
+      if (fatal) throw fatal;
 
       await this.saveManifest(user, manifest);
       return {

@@ -99,6 +99,22 @@ def test_offline_doc_no_read_side_effect(server):
     assert read_flag() is True   # 对照：在线阅读通道打开即标已读
 
 
+def test_offline_doc_rate_limit_retry_after_and_separate_manifest(server):
+    """逐篇限速返回 429 + Retry-After；清单端点独立限速，不被整库下载耗尽。"""
+    client, m = server
+    _login(client)
+    params = {"file": "wiki/concepts/bar-concept.md"}
+    m.offline_doc_limiter.max_hits = 1
+
+    assert client.get("/api/offline/doc", params=params).status_code == 200
+    r = client.get("/api/offline/doc", params=params)
+    assert r.status_code == 429
+    assert r.json()["detail"] == "rate_limited"
+    assert 1 <= int(r.headers["retry-after"]) <= 60
+    # 逐篇被限速时清单仍可用：否则用户重试时连清单都拿不到
+    assert client.get("/api/offline/manifest").status_code == 200
+
+
 def test_offline_doc_personal_404_indistinguishable(server):
     client, m = server
     _login(client)

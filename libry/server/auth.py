@@ -12,6 +12,7 @@ users.json 结构（<data>/users.json，权限 600）：
 此前单用户版本的 data/auth.json 覆盖哈希会被迁移为 admin 的初始密码。
 """
 import json
+import math
 import os
 import threading
 import time
@@ -50,6 +51,23 @@ class RateLimiter:
                 return False
             q.append(now)
             return True
+
+    def retry_after(self, key: str) -> int:
+        """当前 key 被限速时距下一次可放行的秒数（未限速返回 0；不记录命中）。
+
+        供 429 响应生成 Retry-After：从最老的窗口内命中过期算起，
+        客户端据此等待后重试，而不是把合法的大批量请求直接判失败。
+        """
+        now = time.monotonic()
+        with self._lock:
+            q = self._hits.get(key)
+            if not q:
+                return 0
+            while q and now - q[0] > self.window:
+                q.popleft()
+            if len(q) < self.max_hits:
+                return 0
+            return max(1, math.ceil(self.window - (now - q[0])))
 
 
 class Auth:

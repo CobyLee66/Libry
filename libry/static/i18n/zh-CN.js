@@ -177,6 +177,7 @@ window.LibryLocales["zh-CN"] = {
     "update": "检查并更新",
     "downloading": "下载中…",
     "progress": "下载中 {done}/{total}",
+    "waiting": "服务器限速，等待 {s} 秒后继续…",
     "clear": "清除离线数据",
     "clearConfirm": "确定清除本账户的全部离线内容？已缓存的文档删除后需重新下载。",
     "cleared": "离线数据已清除",
@@ -195,7 +196,10 @@ window.LibryLocales["zh-CN"] = {
     "unknown": "未核对"
   },
   "offlineErr": {
-    "manifest_failed": "获取服务器清单失败，请稍后重试（会话可能已过期）",
+    "manifest_failed": "获取服务器清单失败，请稍后重试",
+    "rate_limited": "服务器限速，已下载内容会保留，请稍后重试",
+    "auth_required": "登录已过期，请重新登录后再试",
+    "network_failed": "网络不可用，请检查连接后重试",
     "aborted": "下载已中止"
   },
   "err": {

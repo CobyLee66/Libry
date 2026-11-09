@@ -165,7 +165,7 @@
         offlineView: {            // 离线管理页状态
           busy: false, error: '', lastFailed: [],
           docs: [], manifest: null, usage: null, lastSync: '',
-          progress: { done: 0, total: 0 },
+          progress: { done: 0, total: 0, waiting: 0 },
         },
         sync: { syncing: false, error: '' },
         syncStatus: null,
@@ -387,7 +387,7 @@
         this.offline = !navigator.onLine; this.outboxCount = 0;
         this.offlineView = { busy: false, error: '', lastFailed: [], docs: [],
                              manifest: null, usage: null, lastSync: '',
-                             progress: { done: 0, total: 0 } };
+                             progress: { done: 0, total: 0, waiting: 0 } };
         // 离线库按账户清理：文档缓存与清单快照随登出删除（outbox 保留待本人再登录回放）
         if (window.LibryOffline && prevUser) {
           await LibryOffline.setCurrentUser(null);
@@ -1022,7 +1022,7 @@
         if (!window.LibryOffline) return;
         const v = this.offlineView;
         v.busy = true; v.error = ''; v.lastFailed = [];
-        v.progress = { done: 0, total: 0 };
+        v.progress = { done: 0, total: 0, waiting: 0 };
         try {
           const r = await LibryOffline.syncContent(this.user.name, {
             onProgress: (p) => { v.progress = p; },
@@ -1034,6 +1034,7 @@
             ? this.t('offlineErr.' + e.message) : (e.message || String(e));
         } finally {
           v.busy = false;
+          v.progress.waiting = 0;
           await this.loadOfflinePage();
         }
       },
