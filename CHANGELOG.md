@@ -14,8 +14,8 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Added
 
-- Offline manager: the downloaded-document list is now a scrollable two-column table (title, size), paginated at 100 per page and sorted by article time (newest first). Dates and status labels are no longer shown, giving most of the width to titles, and a large library no longer renders every downloaded document at once.
-  离线管理页：「已下载文档」列表改为可滚动两列表格（标题、大小），每页最多 100 篇，按文章时间倒序（最新在前）；日期与状态标签不再显示，把大部分宽度留给标题，大书库也不再一次性渲染全部已下载文档。
+- Offline manager: the downloaded-document list is now a scrollable two-column table (title, size), paginated at 100 per page and sorted by article time (newest first). Dates and status labels are no longer shown, giving most of the width to titles; the list card uses the full content width with reduced side padding, a tinted sticky header and an always-visible custom scrollbar, and a large library no longer renders every downloaded document at once.
+  离线管理页：「已下载文档」列表改为可滚动两列表格（标题、大小），每页最多 100 篇，按文章时间倒序（最新在前）；日期与状态标签不再显示，把大部分宽度留给标题。列表卡片加宽并减小侧边距，表头着色且吸顶，右侧常显自定义滚动条；大书库也不再一次性渲染全部已下载文档。
 
 ### Fixed
 

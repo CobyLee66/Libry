@@ -433,6 +433,7 @@ input, select { font: inherit; }
 }
 
 /* 离线管理页 */
+.offline-page .settings-body { padding: 32px 10px; }
 .offline-stats {
   display: flex; flex-wrap: wrap; gap: 6px 16px;
   font-size: 13px; color: var(--muted); margin-bottom: 12px;
@@ -445,11 +446,29 @@ input, select { font: inherit; }
 .offline-progress-bar { flex: 1; }
 .offline-progress-text { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
 .offline-waiting { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
-.offline-list-card { scroll-margin-top: 72px; }
+.offline-list-card {
+  width: min(860px, 100%);
+  padding: 22px clamp(10px, 2.5vw, 18px);
+  scroll-margin-top: 72px;
+}
+.offline-table-shell { display: flex; align-items: stretch; gap: 4px; }
 .offline-table-wrap {
+  flex: 1; min-width: 0;
   max-height: min(60vh, 560px); overflow-y: auto;
   border: 1px solid var(--border); border-radius: 8px;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.offline-table-wrap::-webkit-scrollbar { display: none; }
+.offline-scrollbar {
+  flex: 0 0 10px; position: relative;
+  background: var(--bg); border-radius: 5px;
+  pointer-events: none;
+}
+.offline-scrollbar i {
+  position: absolute; left: 2px; right: 2px;
+  background: var(--muted); border-radius: 3px;
 }
 .offline-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .offline-table th, .offline-table td {
@@ -457,7 +476,7 @@ input, select { font: inherit; }
 }
 .offline-table th {
   position: sticky; top: 0; z-index: 1;
-  background: var(--card); color: var(--muted);
+  background: var(--bg); color: var(--text);
   font-size: 13px; font-weight: 600;
 }
 .offline-table tbody tr:last-child td { border-bottom: none; }

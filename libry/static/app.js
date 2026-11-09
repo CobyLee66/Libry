@@ -170,6 +170,7 @@
           docs: [], page: 1, manifest: null, usage: null, lastSync: '',
           progress: { done: 0, total: 0, waiting: 0 },
         },
+        offlineScrollable: false,  // 已下载表格是否有溢出，决定是否显示自定义滚动条
         sync: { syncing: false, error: '' },
         syncStatus: null,
         deletions: { items: [] },
@@ -262,6 +263,7 @@
         this._rsz = setTimeout(() => {
           if (this.view === 'doc' && this.relGraphData) this.renderRelGraph();
           if (this.view === 'graph') this.renderGlobalGraph();
+          if (this.view === 'offline') this.updateOfflineScrollbar();
         }, 300);
       });
       this.route();
@@ -402,6 +404,7 @@
         this.offlineView = { busy: false, error: '', lastFailed: [], docs: [],
                              page: 1, manifest: null, usage: null, lastSync: '',
                              progress: { done: 0, total: 0, waiting: 0 } };
+        this.offlineScrollable = false;
         // 离线库按账户清理：文档缓存与清单快照随登出删除（outbox 保留待本人再登录回放）
         if (window.LibryOffline && prevUser) {
           await LibryOffline.setCurrentUser(null);
@@ -1007,6 +1010,32 @@
         location.hash = '#/offline';
       },
 
+      /* 自定义滚动条：原生滚动条在移动端/overlay 模式下常常不可见，按比例绘制轨道滑块。
+         滚动时直接写滑块 style，避免 100 行表格每个 scroll 事件都走 Vue 重渲染。 */
+      updateOfflineScrollbar() {
+        const el = this.$refs.offlineTable;
+        if (!el) return;
+        const max = el.scrollHeight - el.clientHeight;
+        if (max <= 1) {
+          this.offlineScrollable = false;
+          return;
+        }
+        this.offlineScrollable = true;
+        const thumb = this.$refs.offlineScrollThumb;
+        if (!thumb) {
+          this.$nextTick(() => {
+            if (this.view === 'offline') this.updateOfflineScrollbar();
+          });
+          return;
+        }
+        const height = Math.min(
+          el.clientHeight,
+          Math.max(24, Math.round((el.clientHeight * el.clientHeight) / el.scrollHeight)));
+        const top = Math.round((el.clientHeight - height) * (el.scrollTop / max));
+        thumb.style.top = top + 'px';
+        thumb.style.height = height + 'px';
+      },
+
       changeOfflinePage(delta) {
         const next = this.offlinePage + delta;
         if (next < 1 || next > this.offlinePageCount) return;
@@ -1014,6 +1043,7 @@
         this.$nextTick(() => {
           const table = this.$refs.offlineTable;
           if (table) table.scrollTop = 0;
+          this.updateOfflineScrollbar();
           const el = this.$refs.offlineList;
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
@@ -1048,6 +1078,7 @@
           this.$nextTick(() => {
             const table = this.$refs.offlineTable;
             if (table) table.scrollTop = 0;
+            this.updateOfflineScrollbar();
           });
         } catch (e) { /* IDB 不可用等：页面显示空态 */ }
       },

@@ -438,23 +438,28 @@
       </div>
       <div v-if="offlineView.docs.length" ref="offlineList" class="login-card offline-list-card">
         <h1>{{ t('offline.listTitle') }}</h1>
-        <div ref="offlineTable" class="offline-table-wrap">
-          <table class="offline-table">
-            <thead>
-              <tr>
-                <th>{{ t('offline.colTitle') }}</th>
-                <th class="offline-col-size">{{ t('offline.colSize') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="d in offlinePageDocs" :key="d.file">
-                <td class="offline-title-cell">
-                  <a :href="'#/doc/' + encodeURIComponent(d.file)" :title="d.title">{{ d.title }}</a>
-                </td>
-                <td class="offline-col-size">{{ fmtBytes(d.size) }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="offline-table-shell">
+          <div ref="offlineTable" class="offline-table-wrap" @scroll="updateOfflineScrollbar">
+            <table class="offline-table">
+              <thead>
+                <tr>
+                  <th>{{ t('offline.colTitle') }}</th>
+                  <th class="offline-col-size">{{ t('offline.colSize') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="d in offlinePageDocs" :key="d.file">
+                  <td class="offline-title-cell">
+                    <a :href="'#/doc/' + encodeURIComponent(d.file)" :title="d.title">{{ d.title }}</a>
+                  </td>
+                  <td class="offline-col-size">{{ fmtBytes(d.size) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="offlineScrollable" class="offline-scrollbar" aria-hidden="true">
+            <i ref="offlineScrollThumb"></i>
+          </div>
         </div>
         <div v-if="offlinePageCount > 1" class="offline-pager">
           <button class="btn small-btn" @click="changeOfflinePage(-1)" :disabled="offlinePage <= 1">
