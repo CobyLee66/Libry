@@ -86,4 +86,5 @@ def test_used_keys_exist():
 def test_locale_files_loaded_in_html():
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     for f in (STATIC_DIR / "i18n").glob("*.js"):
-        assert f'src="/i18n/{f.name}"' in html, f"index.html 未加载 {f.name}"
+        # 相对引用（站点根部署下与绝对等价；壳内 webapp/ 快照依赖相对解析）
+        assert f'src="i18n/{f.name}"' in html, f"index.html 未加载 {f.name}"

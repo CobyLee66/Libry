@@ -16,18 +16,18 @@
     })();
   </script>
   <!-- ?v= 仅用于一次性清理 2026-09-03 之前的旧启发式缓存；此后静态资源以 no-cache 下发，改版无需再 bump -->
-  <link rel="stylesheet" href="/style.css?v=20260903">
-  <link rel="icon" type="image/png" href="/icon.png">
-  <link rel="apple-touch-icon" href="/icon.png">
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="style.css?v=20260903">
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#2563eb">
   <!-- Vue 3.5.41 / d3 7 自托管（libry/static/vendor/），避免 CDN 在部分网络下不可达导致白屏 -->
-  <script src="/vendor/vue.global.prod.js"></script>
-  <script src="/vendor/d3.min.js"></script>
+  <script src="vendor/vue.global.prod.js"></script>
+  <script src="vendor/d3.min.js"></script>
   <!-- 界面文案字典 + i18n 运行时（新增语言：加字典文件 + 此处加一行 script，见 docs/frontend-style.md） -->
-  <script src="/i18n/zh-CN.js"></script>
-  <script src="/i18n/en.js"></script>
-  <script src="/i18n/core.js"></script>
+  <script src="i18n/zh-CN.js"></script>
+  <script src="i18n/en.js"></script>
+  <script src="i18n/core.js"></script>
 </head>
 <body>
 <div id="app">
@@ -37,7 +37,7 @@
   <!-- 登录页 -->
   <div v-else-if="view === 'login'" class="center-box">
     <form class="login-card" @submit.prevent="doLogin">
-      <img class="login-logo" src="/icon.png" :alt="t('app.logoAlt')">
+      <img class="login-logo" src="icon.png" :alt="t('app.logoAlt')">
       <h1>{{ t('app.brand') }}</h1>
       <input type="text" v-model.trim="loginUser" :placeholder="t('login.username')" autofocus autocomplete="username">
       <div class="pw-field">
@@ -492,7 +492,7 @@
   <!-- 列表页 -->
   <div v-else class="list-page">
     <header class="topbar">
-      <img class="header-logo" src="/icon.png" :alt="t('app.logoAlt')">
+      <img class="header-logo" src="icon.png" :alt="t('app.logoAlt')">
       <span class="topbar-title">{{ t('app.brand') }}</span>
       <input class="search" type="search" v-model.trim="filters.q" :placeholder="t('list.searchPlaceholder')">
       <span class="whoami" :title="t('list.whoami', { name: user.name })">{{ user.name }}</span>
@@ -637,14 +637,17 @@
   <!-- 轻提示 -->
   <div v-if="toast" class="toast" role="status">{{ toast }}</div>
 </div>
-<script src="/offline.js"></script>
-<script src="/app.js?v=20260903"></script>
+<script src="offline.js"></script>
+<script src="app.js?v=20260903"></script>
 <script>
   /* Service Worker 注册（离线能力的入口）：失败降级为纯在线模式。
      __librySW 供离线管理页提示——HTTP 等非安全上下文注册不上 SW，
-     重启应用后将无法离线拉起（IndexedDB 里已下载的内容仍在）。 */
+     重启应用后将无法离线拉起（IndexedDB 里已下载的内容仍在）。
+     本地模式（壳内 webapp 快照）：离线数据面在壳 origin 镜像库，不依赖 SW。 */
   window.__librySW = 'pending';
-  if (!('serviceWorker' in navigator)) {
+  if (window.__libryLocalMode) {
+    window.__librySW = 'local';
+  } else if (!('serviceWorker' in navigator)) {
     window.__librySW = 'unavailable';
   } else {
     window.addEventListener('load', function () {

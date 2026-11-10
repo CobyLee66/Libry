@@ -202,7 +202,8 @@ window.LibryLocales["en"] = {
     "manifest_failed": "Failed to fetch the server manifest. Please retry later",
     "auth_required": "Your session has expired. Please sign in again",
     "network_failed": "Network unavailable. Check your connection and try again",
-    "aborted": "Download aborted"
+    "aborted": "Download aborted",
+    "idb_blocked": "The local database is busy. Fully close the app and try again."
   },
   "err": {
     "requestFailed": "Request failed ({status})",
@@ -213,6 +214,7 @@ window.LibryLocales["en"] = {
   },
   "api": {
     "rate_limited": "Too many attempts. Please try again later.",
+    "offline_readonly": "This action is unavailable offline — do it in the full app once you're back online.",
     "invalid_credentials": "Incorrect username or password",
     "current_password_wrong": "Current password is incorrect",
     "password_too_short": "Password must be at least 8 characters",

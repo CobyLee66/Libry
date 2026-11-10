@@ -21,6 +21,8 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Added
 
+- Offline mode in the client shell now opens the **full web app** instead of a minimal reader. The shell bundles a snapshot of the whole web app; when offline, the offline portal's "Open offline reader" launches the exact same Vue application you use online, with a fetch shim answering `/api/*` from the shell's mirrored library — document list with search/filters/status tabs/sorting, article reading (TOC, previous/next, images), bookmarks page, marks page and settings all work offline. Reading progress is kept locally; other write actions report read-only (v1 boundary: cross-origin session writes are out of scope). The mirror also snapshots list/bookmarks/marks state at download time, and the portal shows how many documents are available offline.
+  客户端壳的离线模式现在打开**完整 Web 应用**而非极简阅读器。壳内置整个 Web 应用的快照；断网时离线门户的「进入离线阅读」启动的就是与在线完全同款的 Vue 应用——fetch 垫片从壳内镜像库应答 `/api/*`：文档列表的搜索/筛选/状态页签/排序、正文阅读（目录、上下篇、图片）、收藏页、书签页与设置页全部离线可用。阅读进度本地生效；其余写操作提示只读（v1 边界：跨 origin 会话写入不在范围内）。镜像同时保存列表/收藏/书签状态快照，离线门户显示可离线阅读的文档数。
 - The client shell now ships an offline reader and a mirror bridge: after downloading your library in the web app, documents and images are mirrored into the shell's own storage, so offline reading on Android works at cold start without relying on the WebView's Service Worker (unreliable for remote sites). The reader covers the document list, article bodies, previous/next navigation and images; the offline manager shows mirror progress. Deployments using the Caddy template need the updated `deploy/Caddyfile` (CSP `frame-src` now allows the Tauri shell origin).
   客户端壳新增离线阅读器与镜像桥：在 Web 应用下载离线库后，文档与图片会镜像进壳自己的存储，安卓端断网冷启动即可离线阅读，不再依赖 WebView 的 Service Worker（远程站点场景不可靠）。阅读器覆盖文档列表、正文、上下篇导航与图片；离线管理页显示镜像进度。使用 Caddy 模板的部署需同步更新 `deploy/Caddyfile`（CSP `frame-src` 放行 Tauri 壳 origin）。
 
@@ -31,6 +33,8 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Fixed
 
+- "Clear offline data" could silently do nothing: when an IndexedDB version upgrade was blocked by another page context (e.g. an outdated Service Worker holding the old database), every local-library operation hung without any error, so the confirm dialog closed and nothing changed. Database opens now time out with a visible error and yield to version upgrades, confirmation callbacks surface failures as a toast, and the offline manager additionally shows an always-accurate "document data" size next to the (lazily recycled) browser quota estimate.
+  「清除离线数据」此前可能静默无效：当 IndexedDB 版本升级被其他页面上下文（如持有旧库的过期 Service Worker）阻塞时，所有本地库操作会无报错挂起——确认弹窗关闭后什么都没发生。现在数据库打开带超时与可见报错、并主动向版本升级让位；确认回调失败会以 toast 提示；离线管理页在浏览器配额统计（惰性回收）旁新增始终准确的「文档数据」体积。
 - Confirmation dialogs are now app-rendered with localized buttons (确定/取消, OK/Cancel) — the native confirm() always showed browser-language OK/Cancel regardless of the app language. Applies to clearing offline data, clearing manual bookmarks, batch cleanup and user deletion.
   确认对话框改为应用内渲染、按钮可本地化（确定/取消、OK/Cancel）——原生 confirm() 的按钮文案始终跟随浏览器语言，与应用语言无关。覆盖清除离线数据、清除手动书签、批量清理与删除用户。
 - Clearing offline data now also purges the Service Worker's cached vault images, and the offline manager shows an always-accurate "document data" size next to the browser quota estimate (the platform recycles the estimate lazily, so it kept showing stale numbers after clearing).

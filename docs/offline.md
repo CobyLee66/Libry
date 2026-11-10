@@ -24,15 +24,22 @@ Android System WebView 对**远程站点**的 Service Worker 长期不可靠（�
 
 - **镜像桥**（`bridge.html`，壳资产）：远端 Web 应用「下载全部」后，经隐藏 iframe 加载
   壳资产桥页，postMessage 增量同步离线库到壳 origin 的 IndexedDB（同一 `libry-offline`
-  结构，另含 `assets` store 存图片 dataURL）。桥回 ack 已存 hash 表，只发缺失/变化部分；
-  对账删除服务器已移除的文档；登出/清除离线数据时同步清空壳库。
-- **离线阅读器**（`reader.html`，壳资产）：纯 JS 渲染壳库——列表、正文（服务端渲染 HTML
-  直接展示）、上下篇、图片（`/raw/assets` 替换为镜像 dataURL）。
-- **离线门户**（连接页探测失败时的包装界面）：「进入离线阅读」直达壳内阅读器，
+  结构，另含 `assets` store 存图片 dataURL、meta store 的 `snapshot-<user>` 状态快照）。
+  桥回 ack 已存 hash 表，只发缺失/变化部分；对账删除服务器已移除的文档；
+  登出/清除离线数据时同步清空壳库。
+- **本地模式完整 Web 应用**（`webapp/` 快照，壳资产）：构建时把 `libry/static` 整体拷入壳
+  并注入 `local-mode.js` 垫片——断网冷启动经离线门户进入的就是**与在线同款的 Vue 应用**，
+  垫片劫持 `window.fetch` 把 `/api/*` 改由壳库应答（列表筛选/排序/分页、正文、收藏、书签、
+  统计、正文图片 dataURL 改写）。v1 只读：除阅读进度本地生效外，其余写操作返回
+  `offline_readonly`；图谱页走空态。应用与快照随 APK 更新。
+- **轻量兜底阅读器**（`reader.html`，壳资产）：纯 JS 渲染壳库的最小实现，作为 webapp
+  快照缺失时的后备入口保留。
+- **离线门户**（连接页探测失败时的包装界面）：显示壳库文档数、空库禁用离线入口，
   任何网络失败都展示包装过的 UI，不再出现 WebView 系统错误页。
 - 浏览器/桌面 PWA 无壳（`shellHome` 为空），自动跳过镜像，离线仍走 SW 路线（浏览器 SW 可靠）；
   桌面壳同时享有两条路线。服务器需在 CSP `frame-src` 放行 Tauri 壳 origin（见 `deploy/Caddyfile`）。
-- 壳资产的 `lib/offline.js` 由各构建脚本与 CI 在构建时从 `libry/static/` 拷入（单一来源）。
+- 壳资产的 `lib/offline.js` 与 `webapp/` 快照由各构建脚本与 CI 在构建时从 `libry/static/`
+  拷入（单一来源，产物不入库）。
 
 ## 为什么离线包缓存「渲染后 HTML」
 
@@ -61,7 +68,7 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 | store | key | 内容 |
 |---|---|---|
 | `docs` | `['user','file']` | `{hash, payload, size, fetched_at}`——**按账户隔离**（同设备多账户互不可见） |
-| `meta` | `'key'` | `current-user`（页面登录后写、SW 读取）、`manifest-<user>`（上次同步的服务器清单快照） |
+| `meta` | `'key'` | `current-user`（页面登录后写、SW 读取）、`manifest-<user>`（上次同步的服务器清单快照）、`snapshot-<user>`（本地模式垫片的状态快照：列表/收藏/书签/统计） |
 | `outbox` | 自增 `id` | `{url, method, body, ts, user}`——离线写操作，恢复在线按序回放 |
 | `assets` | `['user','path']` | `{dataURL, saved_at}`——站内图片的 dataURL 副本（壳内离线阅读器断网渲染用，v2） |
 

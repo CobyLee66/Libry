@@ -202,7 +202,8 @@ window.LibryLocales["zh-CN"] = {
     "manifest_failed": "获取服务器清单失败，请稍后重试",
     "auth_required": "登录已过期，请重新登录后再试",
     "network_failed": "网络不可用，请检查连接后重试",
-    "aborted": "下载已中止"
+    "aborted": "下载已中止",
+    "idb_blocked": "本地数据库被其他页面占用，请完全退出应用后重试"
   },
   "err": {
     "requestFailed": "请求失败（{status}）",
@@ -213,6 +214,7 @@ window.LibryLocales["zh-CN"] = {
   },
   "api": {
     "rate_limited": "尝试过于频繁，请稍后再试",
+    "offline_readonly": "离线模式下此操作不可用——恢复网络后在完整应用中进行",
     "invalid_credentials": "用户名或密码错误",
     "current_password_wrong": "当前密码错误",
     "password_too_short": "密码至少 8 位",

@@ -39,6 +39,11 @@ jobs:
         run: cargo install tauri-cli --version "^2" --locked
       - name: Sync offline.js into shell ui (offline reader / mirror bridge)
         run: mkdir -p clients/shell/ui/lib && cp libry/static/offline.js clients/shell/ui/lib/offline.js
+      - name: Bundle web app snapshot into shell ui (local mode)
+        run: |
+          mkdir -p clients/shell/ui/webapp
+          cp -R libry/static/. clients/shell/ui/webapp/
+          awk '{ print } /<script src="offline.js"><\/script>/ { print "<script src=\"local-mode.js\"></script>" }' clients/shell/ui/webapp/index.html > clients/shell/ui/webapp/index.html.new && mv clients/shell/ui/webapp/index.html.new clients/shell/ui/webapp/index.html
       - name: Build
         working-directory: clients/shell/src-tauri
         run: cargo tauri build ${{ matrix.args }}
@@ -84,6 +89,11 @@ jobs:
         run: cp clients/android-custom/MainActivity.kt clients/shell/src-tauri/gen/android/app/src/main/java/com/libry/shell/MainActivity.kt
       - name: Sync offline.js into shell ui (offline reader / mirror bridge)
         run: mkdir -p clients/shell/ui/lib && cp libry/static/offline.js clients/shell/ui/lib/offline.js
+      - name: Bundle web app snapshot into shell ui (local mode)
+        run: |
+          mkdir -p clients/shell/ui/webapp
+          cp -R libry/static/. clients/shell/ui/webapp/
+          awk '{ print } /<script src="offline.js"><\/script>/ { print "<script src=\"local-mode.js\"></script>" }' clients/shell/ui/webapp/index.html > clients/shell/ui/webapp/index.html.new && mv clients/shell/ui/webapp/index.html.new clients/shell/ui/webapp/index.html
       - name: Build APK
         working-directory: clients/shell/src-tauri
         run: cargo tauri android build --apk

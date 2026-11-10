@@ -28,9 +28,14 @@ async function precacheShell() {
     await cache.put('/', root.clone());
     const html = await root.text();
     const refs = new Set();
-    // src/href 的本地绝对路径值（含 ?v= 查询串，精确对应 network-first 的缓存键）
-    for (const m of html.matchAll(/(?:src|href)="(\/[^"]+)"/g)) {
-      refs.add(m[1]);
+    // src/href 的本站资源值（含 ?v= 查询串，精确对应 network-first 的缓存键）。
+    // 资产引用已改为相对路径（壳内 webapp/ 快照依赖相对解析），绝对/相对都收；
+    // 跳过外部链接、协议相对、data/blob 等非本站形态与锚点
+    for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
+      const ref = m[1];
+      if (/^(https?:)?\/\//i.test(ref) || /^(data|blob|mailto|javascript):/i.test(ref)) continue;
+      if (ref.startsWith('#') || ref.startsWith("'")) continue;  // 锚点与 Vue 表达式碎片
+      refs.add(ref);
     }
     for (const ref of refs) {
       try {

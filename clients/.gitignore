@@ -11,3 +11,5 @@ dist/
 
 # 构建时从引擎 libry/static 拷入的脚本（壳内离线阅读器/镜像桥依赖，各构建脚本与 CI 刷新）
 shell/ui/lib/
+# 构建时拷入的完整 Web 应用快照（壳内本地模式，断网时的同款 UI）
+shell/ui/webapp/

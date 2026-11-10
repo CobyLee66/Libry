@@ -24,6 +24,7 @@
   function openDb() {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve, reject) => {
+      let settled = false;
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
@@ -40,10 +41,36 @@
           db.createObjectStore(ST_ASSETS, { keyPath: ['user', 'path'] });
         }
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+      req.onsuccess = () => {
+        if (settled) { try { req.result.close(); } catch (e) { /* 已让位 */ } return; }
+        settled = true;
+        const db = req.result;
+        // 旧版本上下文（如更新前的 Service Worker 代码）请求升级版本时主动让位，
+        // 否则它持有的旧连接会把这里的新版本打开请求无限阻塞
+        db.onversionchange = () => {
+          try { db.close(); } catch (e) { /* 已关闭 */ }
+          if (dbPromise === p) dbPromise = null;
+        };
+        resolve(db);
+      };
+      req.onerror = () => {
+        if (settled) return;
+        settled = true;
+        dbPromise = null;
+        reject(req.error);
+      };
+      // 阻塞可见化：旧连接不肯让位时不能让所有本地库操作静默挂起——
+      // 超时报错并复位缓存，占用释放后下一次调用重试即自愈
+      setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        dbPromise = null;
+        try { if (req.result) req.result.close(); } catch (e) { /* 未就绪 */ }
+        reject(new Error('idb_blocked'));
+      }, 10000);
     });
-    return dbPromise;
+    const p = dbPromise;
+    return p;
   }
 
   function reqAsPromise(req) {
@@ -203,6 +230,19 @@
 
     async getManifest(user) {
       const r = await idbGet(ST_META, 'manifest-' + user);
+      return r ? r.value : null;
+    },
+
+    /* ---------------- 本地模式状态快照（完整 UI 垫片的数据源） ---------------- */
+
+    async saveSnapshot(user, snapshot) {
+      const key = 'snapshot-' + user;
+      if (snapshot) await idbPut(ST_META, { key, value: snapshot });
+      else await idbDelete(ST_META, key);
+    },
+
+    async getSnapshot(user) {
+      const r = await idbGet(ST_META, 'snapshot-' + user);
       return r ? r.value : null;
     },
 

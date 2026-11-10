@@ -16,7 +16,8 @@
   'use strict';
   var serverOrigin = '';
   var user = '';
-  var have = {};  // 已存文档 → hash（ack 给父页面做增量）
+  var have = {};        // 已存文档 → hash（ack 给父页面做增量）
+  var lastError = null; // 单条消息失败不中断镜像：记录下来，收尾时随 error 消息上报
 
   function post(msg) { window.parent.postMessage(msg, serverOrigin); }
 
@@ -27,6 +28,7 @@
       serverOrigin = e.origin;
       user = String(d.user || '');
       have = {};
+      lastError = null;
       try {
         var rows = await LibryOffline.listDocs(user);
         rows.forEach(function (r) { have[r.file] = r.hash; });
@@ -35,33 +37,44 @@
       return;
     }
     if (!serverOrigin || !user) return;
-    if (d.type === 'libry-mirror-doc' && d.user === user && d.file) {
-      await LibryOffline.saveDoc(user, String(d.file), String(d.hash || ''), d.payload);
-      have[String(d.file)] = String(d.hash || '');
-    } else if (d.type === 'libry-mirror-asset' && d.user === user && d.path && d.dataURL) {
-      await LibryOffline.saveAsset(user, String(d.path), String(d.dataURL));
-    } else if (d.type === 'libry-mirror-manifest' && d.user === user) {
-      await LibryOffline.saveManifest(user, d.manifest || null);
-    } else if (d.type === 'libry-mirror-current-user' && d.user === user) {
-      await LibryOffline.setCurrentUser(user);
-    } else if (d.type === 'libry-mirror-clear' && d.user === user) {
-      await LibryOffline.dropDocs(user);
-      await LibryOffline.dropAssets(user);
-      await LibryOffline.saveManifest(user, null);
-      var cur = await LibryOffline.currentUser();
-      if (cur === user) await LibryOffline.setCurrentUser(null);
-      have = {};
-    } else if (d.type === 'libry-mirror-done') {
-      // 对账：父页面发来的是其离线库全量，删掉壳库中服务器已不存在的文档
-      if (d.keep) {
-        var keepMap = {};
-        (d.keep || []).forEach(function (f) { keepMap[f] = true; });
-        var rows = await LibryOffline.listDocs(user);
-        for (var i = 0; i < rows.length; i++) {
-          if (!keepMap[rows[i].file]) await LibryOffline.deleteDoc(user, rows[i].file);
+    // 每条消息独立容错：任一步失败记录并继续处理后续消息——
+    // 否则父页面收到 error 立即收尾会销毁 iframe，腰斩尚未落盘的写入
+    try {
+      if (d.type === 'libry-mirror-doc' && d.user === user && d.file) {
+        await LibryOffline.saveDoc(user, String(d.file), String(d.hash || ''), d.payload);
+        have[String(d.file)] = String(d.hash || '');
+      } else if (d.type === 'libry-mirror-asset' && d.user === user && d.path && d.dataURL) {
+        await LibryOffline.saveAsset(user, String(d.path), String(d.dataURL));
+      } else if (d.type === 'libry-mirror-manifest' && d.user === user) {
+        await LibryOffline.saveManifest(user, d.manifest || null);
+      } else if (d.type === 'libry-mirror-snapshot' && d.user === user) {
+        await LibryOffline.saveSnapshot(user, d.snapshot || null);
+      } else if (d.type === 'libry-mirror-current-user' && d.user === user) {
+        await LibryOffline.setCurrentUser(user);
+      } else if (d.type === 'libry-mirror-clear' && d.user === user) {
+        await LibryOffline.dropDocs(user);
+        await LibryOffline.dropAssets(user);
+        await LibryOffline.saveManifest(user, null);
+        await LibryOffline.saveSnapshot(user, null);
+        var cur = await LibryOffline.currentUser();
+        if (cur === user) await LibryOffline.setCurrentUser(null);
+        have = {};
+      } else if (d.type === 'libry-mirror-done') {
+        // 对账：父页面发来的是其离线库全量，删掉壳库中服务器已不存在的文档
+        if (d.keep) {
+          var keepMap = {};
+          (d.keep || []).forEach(function (f) { keepMap[f] = true; });
+          var rows = await LibryOffline.listDocs(user);
+          for (var i = 0; i < rows.length; i++) {
+            if (!keepMap[rows[i].file]) await LibryOffline.deleteDoc(user, rows[i].file);
+          }
         }
+        // 先报 error 再报完成：父页面以 done-ok 为准收尾（error 仅提示不中断）
+        if (lastError) post({ type: 'libry-mirror-error', message: String(lastError) });
+        post({ type: 'libry-mirror-done-ok' });
       }
-      post({ type: 'libry-mirror-done-ok' });
+    } catch (err) {
+      lastError = (err && err.message) || String(err);
     }
   }
 

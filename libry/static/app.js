@@ -87,6 +87,19 @@
     return e;
   }
 
+  /* SW 就绪竞速：navigator.serviceWorker.ready 在无 SW 的环境（本地模式、不支持）
+     会永久 pending，直接 await 会让后续流程静默卡死——必须带超时兜底 */
+  async function swReady(timeoutMs = 3000) {
+    try {
+      return await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((res) => setTimeout(() => res(null), timeoutMs)),
+      ]);
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function api(path, options = {}) {
     const opts = { headers: {}, ...options };
     const method = opts.method || 'GET';
@@ -445,6 +458,11 @@
       },
 
       async doLogout() {
+        // 本地模式（壳内快照应用）：垫片无真实会话可注销，登出即回壳门户
+        if (window.__libryLocalMode && this.shellHome) {
+          this.disconnectServer();
+          return;
+        }
         try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* 离线登出也继续清理本地 */ }
         const prevUser = _currentUser;
         _currentUser = '';
@@ -461,13 +479,16 @@
         this.offlineScrollable = false;
         // 离线库按账户清理：文档缓存与清单快照随登出删除（outbox 保留待本人再登录回放）
         if (window.LibryOffline && prevUser) {
-          await LibryOffline.setCurrentUser(null);
-          await LibryOffline.dropDocs(prevUser);
-          await LibryOffline.dropAssets(prevUser);
-          await LibryOffline.saveManifest(prevUser, null);
           try {
-            const reg = await navigator.serviceWorker.ready;
-            if (reg.active) reg.active.postMessage({ type: 'clear-api-cache' });
+            await LibryOffline.setCurrentUser(null);
+            await LibryOffline.dropDocs(prevUser);
+            await LibryOffline.dropAssets(prevUser);
+            await LibryOffline.saveManifest(prevUser, null);
+            await LibryOffline.saveSnapshot(prevUser, null);
+          } catch (e) { /* 本地清理失败不阻断登出 */ }
+          try {
+            const reg = await swReady();
+            if (reg && reg.active) reg.active.postMessage({ type: 'clear-api-cache' });
           } catch (e) { /* SW 未就绪时忽略 */ }
           // 壳内镜像同步清理（尽力而为；失败时下次镜像按 ack 增量重建）
           await this.mirrorClearShell(prevUser).catch(() => {});
@@ -722,7 +743,7 @@
           } finally {
             this.purge.running = false;
             await this.loadDeletions();
-            if (this.meta) await this.loadMeta();
+            try { if (this.meta) await this.loadMeta(); } catch (e) { /* 统计刷新失败不掩盖主流程 */ }
           }
         });
       },
@@ -935,7 +956,10 @@
           const delta = d.read ? 1 : -1;
           this.counts.read = Math.max(0, this.counts.read + delta);
           this.counts.unread = Math.max(0, this.counts.unread - delta);
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          // 静默会表现为「点了没反应」（本地模式只读等场景需要可见反馈）
+          if (e && e.message && e.message !== 'unauthorized') this.showToast(e.message);
+        }
       },
 
       backToList() {
@@ -1281,8 +1305,8 @@
                 if (d && d.type === 'libry-bridge-ready') break;
               }
               await fn({ send: (msg) => iframe.contentWindow.postMessage(msg, targetOrigin), nextMessage });
-              // 等桥的收尾确认；桥内异常经 libry-mirror-error 上报，其余超时按成功收尾——
-              // 数据大概率已写入，且下次镜像按 ack 增量对账自愈
+              // 等桥的收尾确认；桥内单条消息失败经 libry-mirror-error 上报（不中断，
+              // 桥会继续处理完剩余消息），其余超时按成功收尾——下次镜像按 ack 增量对账自愈
               for (;;) {
                 const d = await Promise.race([
                   nextMessage(),
@@ -1290,7 +1314,9 @@
                 ]);
                 if (!d) break;
                 if (d.type === 'libry-bridge-done-ok') break;
-                if (d.type === 'libry-mirror-error') throw new Error('bridge: ' + d.message);
+                if (d.type === 'libry-mirror-error') {
+                  console.warn('[libry-mirror] 桥内部分写入失败：', d.message);
+                }
               }
               finish(true);
             } catch (e) {
@@ -1326,6 +1352,10 @@
             await new Promise((res) => setTimeout(res, 0));  // 让出主线程，避免长任务卡 UI
           }
           bridge.send({ type: 'libry-mirror-manifest', user, manifest });
+          // 状态快照：本地模式垫片应答 /api/* 的数据源（列表/收藏/书签/统计）。
+          // 需要在线抓取；失败置 null（垫片退化为仅文档能力，下次镜像重试）
+          const snapshot = await this.fetchStateSnapshot();
+          bridge.send({ type: 'libry-mirror-snapshot', user, snapshot });
           bridge.send({ type: 'libry-mirror-current-user', user });
           // 对账基准 = 本地离线库全量（未变化的存量文档虽未重发，也不得被桥删掉）
           bridge.send({ type: 'libry-mirror-done', keep: docs.map((r) => r.file) });
@@ -1344,6 +1374,36 @@
         }, 15000);
       },
 
+      /* 在线抓取列表/收藏/书签/统计的完整快照；失败返回 null（本地模式退化为仅文档能力） */
+      async fetchStateSnapshot() {
+        try {
+          const pageSize = 200;
+          let page = 1;
+          let items = [];
+          let counts = null;
+          for (;;) {
+            const p = new URLSearchParams({ page: String(page), page_size: String(pageSize), status: 'all' });
+            const data = await api('/api/docs?' + p.toString());
+            counts = data.counts;
+            items = items.concat(data.items);
+            if (items.length >= data.total || data.items.length === 0) break;
+            page += 1;
+          }
+          const [meta, bookmarks, marks] = await Promise.all([
+            api('/api/meta'), api('/api/bookmarks'), api('/api/marks'),
+          ]);
+          return {
+            docs: { items, counts },
+            meta,
+            bookmarks,
+            marks,
+            saved_at: new Date().toISOString(),
+          };
+        } catch (e) {
+          return null;
+        }
+      },
+
       /* ---------- 通用确认弹层（原生 confirm 的按钮文案无法本地化） ---------- */
 
       openConfirm(text, onOk) {
@@ -1358,20 +1418,33 @@
         const box = this.confirmBox;
         if (!box) return;
         this.confirmBox = null;
-        await box.onOk();
+        try {
+          await box.onOk();
+        } catch (e) {
+          // 弹窗已关，失败必须可见（此前静默吞掉会表现为「点了没反应」）
+          this.showToast(e && e.message ? e.message : String(e));
+        }
       },
 
       async clearOfflineData() {
         if (!window.LibryOffline) return;
         this.openConfirm(this.t('offline.clearConfirm'), async () => {
           const user = this.user.name;
-          await LibryOffline.dropDocs(user);
-          await LibryOffline.dropAssets(user);
-          await LibryOffline.saveManifest(user, null);
+          try {
+            await LibryOffline.dropDocs(user);
+            await LibryOffline.dropAssets(user);
+            await LibryOffline.saveManifest(user, null);
+            await LibryOffline.saveSnapshot(user, null);
+          } catch (e) {
+            // IDB 被旧连接阻塞等失败必须可见（静默会表现为「点了没反应」）
+            this.showToast(e && e.message === 'idb_blocked'
+              ? this.t('offlineErr.idb_blocked') : (e && e.message || String(e)));
+            return;
+          }
           // 素材缓存一并清掉：否则 storage.estimate 的占用数字不会回落
           try {
-            const reg = await navigator.serviceWorker.ready;
-            if (reg.active) reg.active.postMessage({ type: 'clear-asset-cache' });
+            const reg = await swReady();
+            if (reg && reg.active) reg.active.postMessage({ type: 'clear-asset-cache' });
           } catch (e) { /* SW 未就绪时忽略 */ }
           // 壳内镜像同步清空（尽力而为；失败时下次镜像按 ack 增量重建）
           await this.mirrorClearShell(user).catch(() => {});
@@ -1387,24 +1460,27 @@
 
       async flushOutbox() {
         if (!window.LibryOffline) return;
-        if (!_currentUser) {
-          this.outboxCount = await LibryOffline.outboxCount();
-          return;  // 未登录不回放（回放需要会话）
-        }
-        const r = await LibryOffline.replayOutbox(_currentUser, (item) => {
-          const body = this.replayBody(item);
-          return fetch(item.url, {
-            method: item.method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
+        try {
+          if (!_currentUser) {
+            this.outboxCount = await LibryOffline.outboxCount();
+            return;  // 未登录不回放（回放需要会话）
+          }
+          const r = await LibryOffline.replayOutbox(_currentUser, (item) => {
+            const body = this.replayBody(item);
+            return fetch(item.url, {
+              method: item.method,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
           });
-        });
-        this.outboxCount = r.remaining;
-        if (r.replayed) this.showToast(this.t('offline.synced', { n: r.replayed }));
-        if (r.auth_expired) {
-          this.showToast(this.t('offline.reloginNeeded'));
-          location.hash = '#/login';
-        }
+          this.outboxCount = r.remaining;
+          if (r.auth_expired) {
+            this.showToast(this.t('offline.reloginNeeded'));
+            location.hash = '#/login';
+          } else if (r.replayed) {
+            this.showToast(this.t('offline.synced', { n: r.replayed }));
+          }
+        } catch (e) { /* 本地队列读取失败（如 DB 升级阻塞）：留待下次在线事件重试 */ }
       },
 
       replayBody(item) {

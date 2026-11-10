@@ -34,6 +34,18 @@ mkdir -p "$UI_LIB_DIR"
 cp -f "$REPO_ROOT/libry/static/offline.js" "$UI_LIB_DIR/offline.js"
 echo "   ✅ offline.js 已同步（libry/static → ui/lib）"
 
+# 壳内本地模式（断网时的完整 Web 应用快照）：拷贝 libry/static → ui/webapp/，
+# 并在 app.js 之前注入 local-mode.js（fetch 垫片，仅壳内 tauri origin 激活）
+WEBAPP_DIR="$SHELL_DIR/ui/webapp"
+rm -rf "$WEBAPP_DIR"
+mkdir -p "$WEBAPP_DIR"
+cp -R "$REPO_ROOT/libry/static/." "$WEBAPP_DIR/"
+# awk 跨平台注入（POSIX sed 的 & 与 \& 语义易混，awk 更稳）：
+# 在 offline.js 之后、app.js 之前加载垫片（垫片在任何 fetch 调用前完成劫持即可）
+awk '{ print } /<script src="offline.js"><\/script>/ { print "<script src=\"local-mode.js\"></script>" }' \
+  "$WEBAPP_DIR/index.html" > "$WEBAPP_DIR/index.html.new" && mv "$WEBAPP_DIR/index.html.new" "$WEBAPP_DIR/index.html"
+echo "   ✅ Web 应用快照已同步（libry/static → ui/webapp，本地模式垫片已注入）"
+
 PROFILE="release"
 for a in "$@"; do
   [ "$a" = "--debug" ] && PROFILE="debug"

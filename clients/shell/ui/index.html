@@ -71,6 +71,7 @@
     <div id="offlineBox" class="hidden">
       <div class="saved" id="portalUrl"></div>
       <p class="portal-note" id="portalNote"></p>
+      <p class="portal-note" id="portalStats"></p>
       <button id="btnReadOffline"></button>
       <button class="ghost" id="btnRetry"></button>
       <button class="ghost" id="btnPortalChange"></button>
@@ -90,6 +91,8 @@
     </div>
   </div>
 
+  <!-- 离线门户统计直读壳 origin 镜像库（构建时由 clients/scripts/*.sh 从 libry/static 拷入 lib/） -->
+  <script src="lib/offline.js"></script>
   <script>
     (function () {
       var zh = /^zh/i.test(navigator.language || '');
@@ -100,6 +103,8 @@
         offlineNote: '服务器不可达 — 可直接连接使用离线缓存，或更换地址',
         connecting: '连接中…',
         portalNote: '当前无法连接服务器（设备可能处于离线状态）。已下载的离线内容仍可离线阅读。',
+        portalStats: '壳内离线库：{n} 篇',
+        portalEmpty: '暂无离线内容 — 请联网后在 Web 应用「离线管理」页下载。',
         readOffline: '进入离线阅读',
         retry: '重试连接',
         changeBtn: '更换服务器地址',
@@ -112,6 +117,8 @@
         offlineNote: 'Server unreachable — you can still connect to use the offline cache, or change the URL',
         connecting: 'Connecting…',
         portalNote: 'The server cannot be reached right now (you may be offline). Downloaded content is still available for offline reading.',
+        portalStats: 'Offline library in shell: {n} document(s)',
+        portalEmpty: 'Nothing downloaded yet — while online, download your library from the web app\'s offline manager.',
         readOffline: 'Open offline reader',
         retry: 'Retry connection',
         changeBtn: 'Change server URL',
@@ -211,7 +218,7 @@
       }
 
       // 离线门户：探测不可达时停在壳内（跳转会落到 WebView 系统错误页）。
-      // 离线阅读由壳内阅读器承担——镜像库在在线时经 bridge.html 增量同步到壳 origin。
+      // 离线阅读由壳内本地模式 Web 应用承担——镜像库在在线时经 bridge.html 增量同步到壳 origin。
       function showOfflinePortal(url) {
         $('savedBox').classList.add('hidden');
         $('formBox').classList.add('hidden');
@@ -219,9 +226,24 @@
         $('offlineBox').classList.remove('hidden');
         $('portalUrl').textContent = T.lastUsed + '：' + url;
         $('portalNote').textContent = T.portalNote;
+        refreshPortalStats();
       }
 
-      $('btnReadOffline').onclick = function () { location.href = 'reader.html'; };
+      // 门户展示壳库文档数（同 origin 直读 IndexedDB）；空库禁用离线入口
+      function refreshPortalStats() {
+        var btn = $('btnReadOffline');
+        var stats = $('portalStats');
+        if (!window.LibryOffline) { stats.textContent = ''; return; }
+        LibryOffline.currentUser().then(function (u) {
+          if (!u) { stats.textContent = T.portalEmpty; btn.disabled = true; return; }
+          return LibryOffline.docStats(u).then(function (s) {
+            stats.textContent = T.portalStats.replace('{n}', s.count);
+            btn.disabled = !s.count;
+          });
+        }).catch(function () { stats.textContent = ''; });
+      }
+
+      $('btnReadOffline').onclick = function () { location.href = 'webapp/index.html#/list'; };
       $('btnRetry').onclick = function () {
         if (!saved) return;
         showSplash(saved);
