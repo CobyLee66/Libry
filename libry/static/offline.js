@@ -220,6 +220,29 @@
       });
     },
 
+    /* 空间真实回收：LevelDB 删除行不会缩文件（占用数字长期不回落），
+       只有整库删除才能立即释放。安全门槛：没有其他账户的数据、且 outbox
+       为空（无待同步写入）时才允许整库删除；返回 true 表示已整库删除。 */
+    async destroyIfOnlyUser(user) {
+      const db = await openDb();
+      const allDocs = await idbGetAll(ST_DOCS);
+      if (allDocs.some((r) => r.user !== user)) return false;
+      const allOutbox = await idbGetAll(ST_OUTBOX);
+      if (allOutbox.length) return false;
+      if (dbPromise) {
+        try { (await dbPromise).close(); } catch (e) { /* 已关闭 */ }
+        dbPromise = null;
+      }
+      return await new Promise((resolve) => {
+        const req = indexedDB.deleteDatabase(DB_NAME);
+        // 阻塞时放弃整库删除（行级删除已生效，占用待惰性回收）
+        const timer = setTimeout(() => resolve(false), 8000);
+        req.onsuccess = () => { clearTimeout(timer); resolve(true); };
+        req.onerror = () => { clearTimeout(timer); resolve(false); };
+        req.onblocked = () => { /* 等 versionchange 让位；超时兜底 */ };
+      });
+    },
+
     /* ---------------- 清单快照（上次同步的服务器状态） ---------------- */
 
     async saveManifest(user, manifest) {

@@ -1430,26 +1430,30 @@
         if (!window.LibryOffline) return;
         this.openConfirm(this.t('offline.clearConfirm'), async () => {
           const user = this.user.name;
+          // 第一步：本地库清理（快速、阻塞界面反馈）——完成即刷新页面数据
           try {
-            await LibryOffline.dropDocs(user);
-            await LibryOffline.dropAssets(user);
-            await LibryOffline.saveManifest(user, null);
-            await LibryOffline.saveSnapshot(user, null);
+            const destroyed = await LibryOffline.destroyIfOnlyUser(user);
+            if (!destroyed) {
+              await LibryOffline.dropDocs(user);
+              await LibryOffline.dropAssets(user);
+              await LibryOffline.saveManifest(user, null);
+              await LibryOffline.saveSnapshot(user, null);
+            }
           } catch (e) {
             // IDB 被旧连接阻塞等失败必须可见（静默会表现为「点了没反应」）
             this.showToast(e && e.message === 'idb_blocked'
               ? this.t('offlineErr.idb_blocked') : (e && e.message || String(e)));
             return;
           }
-          // 素材缓存一并清掉：否则 storage.estimate 的占用数字不会回落
+          this.showToast(this.t('offline.cleared'));
+          await this.loadOfflinePage();
+          // 第二步（后台尽力而为，不阻塞界面）：素材缓存与壳内镜像清理。
+          // 整库压缩回收已在第一步完成（无其他账户数据时），占用数字随首次刷新回落
           try {
             const reg = await swReady();
             if (reg && reg.active) reg.active.postMessage({ type: 'clear-asset-cache' });
           } catch (e) { /* SW 未就绪时忽略 */ }
-          // 壳内镜像同步清空（尽力而为；失败时下次镜像按 ack 增量重建）
           await this.mirrorClearShell(user).catch(() => {});
-          this.showToast(this.t('offline.cleared'));
-          await this.loadOfflinePage();
         });
       },
 

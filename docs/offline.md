@@ -75,6 +75,11 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 登出清理：当前用户 `docs` + manifest 删除、`current-user` 置空、通知 SW 清空 API
 响应缓存（按 URL 缓存的列表/会话跨账户需失效）；outbox 保留（本人再登录后续传）。
 
+「清除离线数据」的空间回收：LevelDB 删除行不会缩文件（浏览器占用统计长期不回落），
+清空时若**没有其他账户的数据且 outbox 为空**，直接整库删除并重建（占用立即真实回落）；
+否则退化为按账户行级删除（空间待平台惰性回收）。清空流程两段式：先完成本地库清理并
+即时刷新界面，素材缓存（SW 消息）与壳内镜像清理在后台尽力而为。
+
 ## 增量下载协议
 
 1. 客户端 `GET /api/offline/manifest` → `{generated_at, docs: {file: {title, type, updated, hash}}}`（hash 为源 md 的 sha256，服务端现场计算，不依赖索引新鲜度）。
