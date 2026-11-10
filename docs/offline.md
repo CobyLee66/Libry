@@ -30,7 +30,7 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 | 导航与壳资源（html/js/css/i18n/vendor/icon/manifest） | network-first（3.5s 超时）→ 缓存回退 | 在线=最新代码；SW 激活时解析首页引用做一次壳预缓存，保证「首次访问即断网」也能离线拉起 |
 | `/api/doc?file=` | network-first → 成功时写入离线库（**访问即缓存层**）；失败回放离线库 | 访问过的文档自动具备离线能力 |
 | `/api/offline/*` | 直通网络（不缓存、不回放，`cache: 'no-store'`） | 预取通道由 IndexedDB 管理；避免 3.5s 超时截断整库下载、超时后回放旧文档被按新 hash 保存，以及 API Cache 重复占用整库空间 |
-| 其余 `/api/` GET（meta/docs/session/bookmarks/marks…） | network-first → 缓存回退 | 离线启动时 `/api/session` 的缓存回放使应用无需强制登录即可进入 |
+| 其余 `/api/` GET（meta/docs/session/bookmarks/marks…） | network-first → 缓存回退 | 离线启动时 `/api/session` 的缓存回放使应用无需强制登录即可进入；缓存未命中（SW 合成 503）时页面侧按离线库 `current-user` 兜底进入离线模式 |
 | `/raw/assets/` | stale-while-revalidate | 素材约定不可变；离线显示缓存副本 |
 | 非 GET（写请求） | 不拦截 | 离线失败由应用层 outbox 排队（见下） |
 
@@ -77,9 +77,17 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 
 ## 已知限制
 
-- 壳/PWA 离线**首次启动**必须至少在线一次（SW 注册后才能离线拉起）。
-- 列表页离线依赖 SW 缓存的 `/api/docs` 精确 URL 命中，筛选变化后可能回退不全；
-  离线管理页（`#/offline`）从离线库列已下载篇目，始终可靠。
+- 壳/PWA 离线**首次启动**必须至少在线一次（SW 注册后才能离线拉起）；SW 仅在安全上下文
+  （HTTPS 或 localhost）注册——明文 HTTP（如局域网 IP 直连）下注册不上，离线能力降级：
+  应用已打开期间已下载内容仍可阅读（页面侧直接回放 IndexedDB），但重启后无法离线拉起，
+  离线管理页会在 SW 不可用时给出提示。
+- **页面侧离线兜底**（app.js）：`/api/session`、`/api/doc`、`/api/docs` 在 SW 缓存未命中
+  （合成 503 `offline_not_cached`）或无 SW 网络直连失败时，应用直接回放 IndexedDB 离线库——
+  会话按 `current-user` 进入离线模式、文档按已下载记录渲染（payload 与 `/api/doc` 同构）、
+  列表按已下载记录的 meta 构造（支持 q/type/visibility/tags 筛选与排序，无已读状态/摘要）。
+  离线读路径不依赖 SW 存活；SW 正常时仍由 sw.js 的缓存回放优先接管。
+- 列表页：在线时依赖 SW 缓存的 `/api/docs` 精确 URL 命中，筛选变化后可能回退不全；
+  离线时回退离线库列表（见上）。离线管理页（`#/offline`）始终直接读离线库，最可靠。
 - 关联图与全文搜索未进入离线 v1（graph 为可选 API；content.json 留作未来离线 FTS 备料）。
 
 ## 客户端形态

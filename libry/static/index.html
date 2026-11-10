@@ -405,6 +405,9 @@
       <div class="login-card">
         <h1>{{ t('offline.statusTitle') }}</h1>
         <p class="sync-desc">{{ t('offline.desc') }}</p>
+        <!-- SW 注册失败/不支持（HTTP 局域网等非安全上下文）：已下载内容仍在，
+             但重启应用后将无法离线拉起——提示用户改用 HTTPS 访问 -->
+        <p v-if="swUnavailable" class="error">{{ t('offline.swUnavailable') }}</p>
         <div class="offline-stats">
           <span class="offline-stat"><strong>{{ offlineView.docs.length }}</strong>{{ t('offline.statDocs') }}</span>
           <span v-if="offlineView.lastSync" class="offline-stat">
@@ -623,10 +626,20 @@
 <script src="/offline.js"></script>
 <script src="/app.js?v=20260903"></script>
 <script>
-  /* Service Worker 注册（离线能力的入口）：失败静默降级为纯在线模式 */
-  if ('serviceWorker' in navigator) {
+  /* Service Worker 注册（离线能力的入口）：失败降级为纯在线模式。
+     __librySW 供离线管理页提示——HTTP 等非安全上下文注册不上 SW，
+     重启应用后将无法离线拉起（IndexedDB 里已下载的内容仍在）。 */
+  window.__librySW = 'pending';
+  if (!('serviceWorker' in navigator)) {
+    window.__librySW = 'unavailable';
+  } else {
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('/sw.js').catch(function () { /* 私密模式等不支持时静默降级 */ });
+      navigator.serviceWorker.register('/sw.js').then(function () {
+        window.__librySW = 'ok';
+      }, function (err) {
+        window.__librySW = 'unavailable';
+        console.warn('Service Worker 注册失败，离线能力不可用：', err);
+      });
     });
   }
 </script>

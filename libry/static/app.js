@@ -79,6 +79,14 @@
     return e.isComposing || e.keyCode === 229;
   }
 
+  /* 离线网络错误：带 .offline 标记，调用方（ensureSession/loadDoc/reloadList）据此
+     走本地离线库兜底，与 404/429 等业务错误区分 */
+  function offlineError() {
+    const e = new Error(LibryI18n.t('err.offline'));
+    e.offline = true;
+    return e;
+  }
+
   async function api(path, options = {}) {
     const opts = { headers: {}, ...options };
     const method = opts.method || 'GET';
@@ -90,7 +98,9 @@
     let res;
     try {
       res = await fetch(path, opts);
-      if (_vm) _vm.offline = false;
+      // SW 缓存回放的成功响应不代表在线：离线标志跟随系统连通性，
+      // 避免断网时每次缓存命中都把「离线模式」横幅熄灭
+      if (_vm) _vm.offline = !navigator.onLine;
     } catch (e) {
       if (_vm) _vm.offline = true;
       if (method !== 'GET' && rawBody !== null
@@ -102,7 +112,7 @@
         if (_vm) _vm.outboxCount = await LibryOffline.outboxCount(_currentUser);
         throw new Error(LibryI18n.t('err.offlineQueued'));
       }
-      throw new Error(LibryI18n.t('err.offline'));
+      throw offlineError();
     }
     if (res.status === 401) {
       location.hash = '#/login';
@@ -110,12 +120,19 @@
     }
     if (!res.ok) {
       let msg = LibryI18n.t('err.requestFailed', { status: res.status });
+      let detail = '';
       try {
         const d = (await res.json()).detail;
         // 服务端错误码（见 docs/api.md）映射为当前语言文案；未识别的 detail 原样显示（兼容旧版/动态消息）
-        if (d) msg = LibryI18n.has('api.' + d) ? LibryI18n.t('api.' + d) : d;
+        if (d) {
+          detail = d;
+          msg = LibryI18n.has('api.' + d) ? LibryI18n.t('api.' + d) : d;
+        }
       } catch (e) { /* ignore */ }
-      throw new Error(msg);
+      // SW 离线且无缓存的合成 503 同样标记为离线错误（fetch 正常 resolve，不进上面的 catch）
+      const err = new Error(msg);
+      if (detail === 'offline_not_cached') err.offline = true;
+      throw err;
     }
     return res.json();
   }
@@ -183,6 +200,7 @@
           progress: { done: 0, total: 0, waiting: 0 },
         },
         offlineScrollable: false,  // 已下载表格是否有溢出，决定是否显示自定义滚动条
+        swUnavailable: false,     // SW 注册失败/不支持（HTTP 等非安全上下文）：重启后无法离线拉起
         sync: { syncing: false, error: '' },
         syncStatus: null,
         deletions: { items: [] },
@@ -355,14 +373,23 @@
           if (!ok) return;
           this.view = 'list';
           this.restoreFilters(hash);
-          await this.loadMeta();  // 每次进入都重取：continue_reading 卡片与新增计数需反映最新进度
+          // 每次进入都重取：continue_reading 卡片与新增计数需反映最新进度。
+          // 离线时 meta 不可用（继续阅读卡片随之隐藏），不能阻断列表的离线回放
+          try { await this.loadMeta(); } catch (e) { /* 离线：沿用旧 meta 或置空 */ }
           await this.reloadList(false);
         }
       },
 
       async ensureSession() {
         try {
-          const s = await fetch('/api/session').then(r => r.json());
+          const res = await fetch('/api/session');
+          const s = await res.json();
+          if (!res.ok) {
+            // 401 = 服务器可达但会话无效 → 登录；其余非 ok（含 SW 离线合成的 503
+            // offline_not_cached，fetch 不 reject）→ 当作网络不可达，走下面的离线兜底
+            if (res.status === 401) { this.view = 'login'; location.hash = '#/login'; return false; }
+            throw new Error('session_unreachable');
+          }
           if (!s.authenticated) { this.view = 'login'; location.hash = '#/login'; return false; }
           this.user = { name: s.username, admin: !!s.admin };
           await this.afterSessionKnown();
@@ -507,9 +534,43 @@
           this.items = this.page === 1 ? data.items : this.items.concat(data.items);
           this.total = data.total;
           this.counts = data.counts;
+        } catch (e) {
+          // 离线兜底：SW 缓存未命中时用离线库渲染可浏览列表（无已读状态/摘要，
+          // 筛选支持 q/type/visibility/tags 与排序；counts 以总数近似，标签页徽标不展示）
+          const rows = await this.offlineListRows(e);
+          if (rows) {
+            this.items = rows;
+            this.total = rows.length;
+            this.counts = { all: rows.length, new: 0, unread: 0, read: 0 };
+          }
         } finally {
           this.loading = false;
         }
+      },
+
+      /* 断网时从离线库构造可浏览列表；返回 null 表示无离线数据（列表保持空态） */
+      async offlineListRows(err) {
+        if (!((err && err.offline) || !navigator.onLine)) return null;
+        if (!window.LibryOffline) return null;
+        const user = await LibryOffline.currentUser().catch(() => '');
+        if (!user) return null;
+        let saved;
+        try { saved = await LibryOffline.listDocs(user); } catch (e) { return null; }
+        const f = this.filters;
+        const q = (f.q || '').toLowerCase();
+        const docs = saved.map((r) => ({ file: r.file, ...((r.payload && r.payload.meta) || {}) }))
+          .filter((d) => {
+            if (f.type && d.type !== f.type) return false;
+            if (f.visibility && d.visibility !== f.visibility) return false;
+            if (f.tags.length && !f.tags.every((tg) => (d.tags || []).includes(tg))) return false;
+            if (q && !((d.title || '').toLowerCase().includes(q))) return false;
+            return true;
+          });
+        const key = f.sort === 'updated' ? 'updated' : f.sort === 'title' ? 'title' : 'created';
+        docs.sort((a, b) => key === 'title'
+          ? String(a.title || a.file).localeCompare(String(b.title || b.file), 'zh')
+          : String(b[key] || '').localeCompare(String(a[key] || '')));
+        return docs;
       },
 
       loadMore() {
@@ -730,23 +791,42 @@
         clearTimeout(this._progTimer); this._pendingProg = null;
         try {
           this.doc = await api('/api/doc?file=' + encodeURIComponent(file));
-          this.$nextTick(() => {
-            const p = this.doc && this.doc.progress;
-            if (p && (p.pct > 0 || p.scroll > 0)) {
-              // 恢复上次阅读位置：优先按百分比（跨视口尺寸更稳），退化用像素
-              const range = document.documentElement.scrollHeight - window.innerHeight;
-              window.scrollTo(0, range > 0 ? Math.round(p.pct * range) : (p.scroll || 0));
-              this.showToast(this.t('marks.restored'));
-            } else {
-              window.scrollTo(0, 0);
-            }
-            this.buildToc();
-          });
-          this.loadRelGraph(file);
         } catch (e) {
-          alert(e.message);
-          this.backToList();
+          // 离线兜底：SW 未注册/缓存未命中时直接读离线库
+          // （payload 与 /api/doc 同构：服务端 _doc_payload 同一渲染管线产出）
+          const cached = await this.offlineDoc(file, e);
+          if (cached) {
+            this.doc = cached;
+          } else {
+            alert(e.message);
+            this.backToList();
+            return;
+          }
         }
+        this.$nextTick(() => {
+          const p = this.doc && this.doc.progress;
+          if (p && (p.pct > 0 || p.scroll > 0)) {
+            // 恢复上次阅读位置：优先按百分比（跨视口尺寸更稳），退化用像素
+            const range = document.documentElement.scrollHeight - window.innerHeight;
+            window.scrollTo(0, range > 0 ? Math.round(p.pct * range) : (p.scroll || 0));
+            this.showToast(this.t('marks.restored'));
+          } else {
+            window.scrollTo(0, 0);
+          }
+          this.buildToc();
+        });
+        this.loadRelGraph(file);
+      },
+
+      /* 断网时回放离线库中已下载的文档；SW 在场时通常由 docStrategy 直接回放，走不到这里 */
+      async offlineDoc(file, err) {
+        if (!((err && err.offline) || !navigator.onLine)) return null;
+        if (!window.LibryOffline) return null;
+        const user = await LibryOffline.currentUser().catch(() => '');
+        if (!user) return null;
+        const rec = await LibryOffline.getDoc(user, file).catch(() => null);
+        if (rec) this.offline = true;
+        return rec ? rec.payload : null;
       },
 
       onDocScroll() {
@@ -828,7 +908,12 @@
 
       async markUnread() {
         if (!this.doc) return;
-        await api('/api/state/unread', { method: 'POST', body: { files: [this.doc.meta.file] } });
+        try {
+          await api('/api/state/unread', { method: 'POST', body: { files: [this.doc.meta.file] } });
+        } catch (e) {
+          // 离线时该写操作已入 outbox（提示「已暂存」）；其余失败也照常返回列表
+          alert(e.message);
+        }
         this.backToList();
       },
 
@@ -1086,6 +1171,8 @@
       async loadOfflinePage() {
         const v = this.offlineView;
         if (!window.LibryOffline) return;
+        // SW 状态在 index.html 注册时置位（pending 期间不误报）
+        this.swUnavailable = window.__librySW === 'unavailable';
         v.page = 1;
         try {
           const rows = await LibryOffline.listDocs(this.user.name);

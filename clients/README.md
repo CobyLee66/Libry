@@ -8,7 +8,7 @@ Web 层的 Service Worker + IndexedDB 提供（见 `docs/offline.md`）。
 ```
 clients/
 └── shell/
-    ├── ui/index.html          # 首启/换服务器页（纯静态：记地址 + 可达性探测；可达即连、断开后手动）
+    ├── ui/index.html          # 首启/换服务器页（纯静态：记地址；连过的地址启动即连——离线也进，仅主动断开后手动）
     └── src-tauri/             # Tauri 2 工程（Rust 侧仅样板代码，无自定义 command）
         ├── src/               #   lib.rs + main.rs（~10 行）
         ├── tauri.conf.json    #   窗口/打包配置；frontendDist 指向 ../ui
@@ -18,10 +18,11 @@ clients/
 设计要点：
 
 - **无 IPC**：壳不定义任何 Tauri command，远程页面默认无 IPC 权限，与浏览器访问同权。
-- **连接策略**：连接过的地址存于壳的 localStorage（`libry-server`）。启动即后台探测可达性：
-  可达就**立即自动连接**（期间只显示锁定的连接中界面，无可点击元素）；不可达（断网/宕机）则
-  停留在「上次连接」卡片，由用户手动决定（点「连接」进入后由远端 Service Worker 回放缓存内容，
-  首次使用前需至少在线登录一次）。
+- **连接策略**：连接过的地址存于壳的 localStorage（`libry-server`）。启动**立即自动连接**
+  （期间只显示锁定的连接中界面，无可点击元素）——在线时由远端 Service Worker 的
+  network-first 给出最新网页，断网/宕机时由它回放缓存内容**直接进入离线阅读**（首次使用前
+  需至少在线登录一次）。仅当用户在 Web 设置页「断开连接」后（`libry-server-noauto` 置位）
+  启动停留在「上次连接」卡片，由用户手动决定。
 - **壳 ↔ Web 跳转标记**（跨 origin，只能靠 URL 传）：壳连接时给目标 URL 追加
   `?_libryHome=<壳首页>`，Web 层存下后供设置页「断开连接并更换服务器」（仅壳内可见）跳回壳页；
   跳回时带 `?_libryDisconnected=1`，壳保留地址记忆（`libry-server-noauto` 置位）但之后启动

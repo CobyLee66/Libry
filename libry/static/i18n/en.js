@@ -169,6 +169,7 @@ window.LibryLocales["en"] = {
   "offline": {
     "title": "Offline reading",
     "desc": "Download content visible to this account for offline reading. When online, the latest web content always takes priority — this page only manages the local cache.",
+    "swUnavailable": "Service Worker is unavailable in this environment (HTTPS or localhost required): downloaded content stays readable, but the app cannot start offline after a restart.",
     "statusTitle": "Local cache",
     "statDocs": "docs downloaded",
     "lastSync": "Server content version: {ts}",

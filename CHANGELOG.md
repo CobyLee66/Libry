@@ -14,10 +14,20 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Changed
 
-- The desktop/mobile client now connects instantly on launch when the last server is reachable — the wait-and-choose card is gone, replaced by a locked "Connecting…" screen with nothing to click. When the server is unreachable (offline or down), the app stays on the "Last connected to" card and no longer auto-connects after a countdown; connecting stays a manual choice (offline reading still works from there via the Service Worker cache). The client shell version is bumped to 0.2.0.
-  客户端（桌面/移动壳）启动时只要上次的服务器可达就**立即自动连接**——不再停留 3 秒的选择卡片，取而代之是无可点击元素的「连接中…」锁定界面。服务器不可达（断网或宕机）时停留在「上次连接」卡片，不再倒计时自动连接，是否连接由用户手动决定（离线阅读仍可从那里经 Service Worker 缓存进入）。壳版本号升至 0.2.0。
+- The desktop/mobile client now connects instantly on launch to the last server — online, the remote Service Worker's network-first policy serves the latest web page; offline, it replays its cache straight into offline reading, with no unreachable card or countdown in between (only the locked "Connecting…" screen). The launch-time reachability probe is gone: reachable or not, the jump happens immediately. The "Last connected to" card now appears only after you explicitly disconnect via the settings page. The client shell version is bumped to 0.2.1.
+  客户端（桌面/移动壳）启动即自动连接上次的服务器——在线时由远端 Service Worker 的 network-first 策略给出最新网页，断网/宕机时由它回放缓存直接进入离线阅读，中间不再有「上次连接」卡片或倒计时（只显示锁定的「连接中…」界面）。启动时的可达性探测已移除：无论可达与否都立即跳转。「上次连接」卡片仅在设置页主动「断开连接」后出现。壳版本号升至 0.2.1。
 
 ### Added
+
+- "Disconnect and change server" on the settings page (visible only inside the client shell): logs out and returns to the shell's server page. The remembered address is kept but no longer auto-connected on launch until you explicitly connect again; switching back to a previous server later keeps its offline downloads.
+  设置页新增「断开连接并更换服务器」（仅客户端壳内显示）：注销当前会话并跳回壳的连接页。记住的服务器地址保留，但在再次主动连接之前启动时不再自动连接；之后切回原服务器时离线下载的缓存仍然保留。
+- The offline manager now warns when the Service Worker is unavailable (plain-HTTP access, private browsing…): downloaded content stays readable in the running app, but the app cannot start offline after a restart.
+  离线管理页在 Service Worker 不可用时（HTTP 明文访问、隐私浏览等）给出警告：运行中的应用仍可阅读已下载内容，但重启后无法离线进入。
+
+### Fixed
+
+- Offline mode no longer breaks at the first network failure. Entering the app offline works even when the Service Worker's cached session is missing — the session check now treats the SW's synthesized "offline, not cached" response as offline and enters with the locally remembered account instead of bouncing to a login screen that cannot log in. Documents downloaded to the offline library open offline even if the Service Worker is missing or its cache misses (the page replays them directly from IndexedDB), and the document list falls back to the locally downloaded library (title/type/tag filtering) instead of going blank. Also fixed an uncaught error when marking a document unread offline.
+  离线模式不再因第一次网络失败而失效。SW 缓存的会话缺失时也能离线进入应用——会话检查现在把 SW 合成的「离线且未缓存」响应视为离线，用本地记住的账户直接进入，而不是弹到无法登录的登录页；已下载到离线库的文档在 SW 缺失或缓存未命中时也能离线打开（页面直接回放 IndexedDB）；文档列表回退为本地已下载库（支持标题/类型/标签筛选）而非空白。另修复离线标记未读时的未捕获异常。
 
 - "Disconnect and change server" on the settings page (visible only inside the client shell): logs out and returns to the shell's server page. The remembered address is kept but no longer auto-connected on launch until you explicitly connect again; switching back to a previous server later keeps its offline downloads.
   设置页新增「断开连接并更换服务器」（仅客户端壳内显示）：注销当前会话并跳回壳的连接页。记住的服务器地址保留，但在再次主动连接之前启动时不再自动连接；之后切回原服务器时离线下载的缓存仍然保留。

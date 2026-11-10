@@ -169,6 +169,7 @@ window.LibryLocales["zh-CN"] = {
   "offline": {
     "title": "离线阅读",
     "desc": "把当前账户可见的内容下载到本地，无网络时也能阅读；有网络时始终优先使用在线最新内容，本页仅管理本地缓存。",
+    "swUnavailable": "当前环境不支持 Service Worker（需 HTTPS 或 localhost 访问）：已下载内容仍可阅读，但重启应用后将无法离线进入。",
     "statusTitle": "本地缓存",
     "statDocs": "篇已下载",
     "lastSync": "服务器内容版本：{ts}",

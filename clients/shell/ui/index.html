@@ -191,11 +191,10 @@
         try { localStorage.setItem(NOAUTO_KEY, '1'); } catch (e) { /* 存储不可用 */ }
         showForm('', '');
       } else if (saved && !noauto) {
-        // 自动连接：先显示锁定的连接中界面，探测可达立即跳转；不可达回落到卡片（不自动连）
-        $('connectBox').classList.remove('hidden');
-        $('connectUrl').textContent = saved;
-        $('connectHint').textContent = T.connecting;
-        probe(saved, function () { connect(saved); }, function () { showSavedCard(saved, true); });
+        // 自动连接：立即整页跳转。在线时远端 SW network-first 给最新页面；
+        // 离线时由远端 SW 回放缓存直接进入离线阅读（探测与否都跳转，探测只会白等 0-4 秒）。
+        // 仅在用户主动断开过（noauto）时保留手动卡片；SW 缺失且服务器宕机才会落到 WebView 错误页。
+        connect(saved);
       } else if (saved) {
         showSavedCard(saved);
       } else {
