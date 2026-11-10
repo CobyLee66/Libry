@@ -14,10 +14,15 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Changed
 
-- The desktop/mobile client now connects instantly on launch to the last server — online, the remote Service Worker's network-first policy serves the latest web page; offline, it replays its cache straight into offline reading, with no unreachable card or countdown in between (only the locked "Connecting…" screen). The launch-time reachability probe is gone: reachable or not, the jump happens immediately. The "Last connected to" card now appears only after you explicitly disconnect via the settings page. The client shell version is bumped to 0.2.1.
-  客户端（桌面/移动壳）启动即自动连接上次的服务器——在线时由远端 Service Worker 的 network-first 策略给出最新网页，断网/宕机时由它回放缓存直接进入离线阅读，中间不再有「上次连接」卡片或倒计时（只显示锁定的「连接中…」界面）。启动时的可达性探测已移除：无论可达与否都立即跳转。「上次连接」卡片仅在设置页主动「断开连接」后出现。壳版本号升至 0.2.1。
+- The client shell now handles an unreachable server gracefully instead of jumping into the WebView's system error page. On launch it shows a locked "Connecting…" screen while probing the saved server: reachable, it connects as before (latest web page); unreachable, it stays inside the shell and offers an offline portal — "Open offline reader" (a built-in shell reader backed by a mirror of your offline library), "Retry connection" and "Change server URL". The mirror syncs automatically after every "Download all / Check for updates" in the web app's offline manager (only missing or changed documents and images are sent) and is cleared on logout or when clearing offline data. The client shell version is bumped to 0.3.0.
+  客户端壳现在会优雅处理服务器不可达，而不是跳进 WebView 系统错误页。启动时显示锁定的「连接中…」并探测上次服务器：可达照常连接（在线永远是最新网页）；不可达则停留在壳内，提供离线门户——「进入离线阅读」（壳内阅读器，数据来自离线库的壳内镜像）、「重试连接」与「更换服务器」。每次在 Web 应用离线管理页「下载全部/检查并更新」后自动镜像（只发送缺失或变化的文档与图片），登出或清除离线数据时同步清空。壳版本号升至 0.3.0。
+- Per-document offline downloads are no longer rate-limited: the deliberate 600 hits/min/IP cap is gone, so large first-time downloads never stall or get truncated. The manifest endpoint keeps a 30 hits/min/IP guard against abuse (429 + Retry-After semantics remain only there).
+  逐篇离线下载不再限速：删除了 600 次/分/IP 的刻意限制，首次整库下载不会再被截断。清单端点保留 30 次/分/IP 的防滥用限速（429 + Retry-After 语义仅对它保留）。
 
 ### Added
+
+- The client shell now ships an offline reader and a mirror bridge: after downloading your library in the web app, documents and images are mirrored into the shell's own storage, so offline reading on Android works at cold start without relying on the WebView's Service Worker (unreliable for remote sites). The reader covers the document list, article bodies, previous/next navigation and images; the offline manager shows mirror progress. Deployments using the Caddy template need the updated `deploy/Caddyfile` (CSP `frame-src` now allows the Tauri shell origin).
+  客户端壳新增离线阅读器与镜像桥：在 Web 应用下载离线库后，文档与图片会镜像进壳自己的存储，安卓端断网冷启动即可离线阅读，不再依赖 WebView 的 Service Worker（远程站点场景不可靠）。阅读器覆盖文档列表、正文、上下篇导航与图片；离线管理页显示镜像进度。使用 Caddy 模板的部署需同步更新 `deploy/Caddyfile`（CSP `frame-src` 放行 Tauri 壳 origin）。
 
 - "Disconnect and change server" on the settings page (visible only inside the client shell): logs out and returns to the shell's server page. The remembered address is kept but no longer auto-connected on launch until you explicitly connect again; switching back to a previous server later keeps its offline downloads.
   设置页新增「断开连接并更换服务器」（仅客户端壳内显示）：注销当前会话并跳回壳的连接页。记住的服务器地址保留，但在再次主动连接之前启动时不再自动连接；之后切回原服务器时离线下载的缓存仍然保留。
@@ -26,6 +31,10 @@ Each entry is bilingual: English first, 中文随行。
 
 ### Fixed
 
+- Confirmation dialogs are now app-rendered with localized buttons (确定/取消, OK/Cancel) — the native confirm() always showed browser-language OK/Cancel regardless of the app language. Applies to clearing offline data, clearing manual bookmarks, batch cleanup and user deletion.
+  确认对话框改为应用内渲染、按钮可本地化（确定/取消、OK/Cancel）——原生 confirm() 的按钮文案始终跟随浏览器语言，与应用语言无关。覆盖清除离线数据、清除手动书签、批量清理与删除用户。
+- Clearing offline data now also purges the Service Worker's cached vault images, and the offline manager shows an always-accurate "document data" size next to the browser quota estimate (the platform recycles the estimate lazily, so it kept showing stale numbers after clearing).
+  清除离线数据现在会同时清空 Service Worker 缓存的 vault 图片；离线管理页在浏览器配额统计旁新增始终准确的「文档数据」体积（配额统计由系统惰性回收，清除后可能长时间显示旧值）。
 - Offline mode no longer breaks at the first network failure. Entering the app offline works even when the Service Worker's cached session is missing — the session check now treats the SW's synthesized "offline, not cached" response as offline and enters with the locally remembered account instead of bouncing to a login screen that cannot log in. Documents downloaded to the offline library open offline even if the Service Worker is missing or its cache misses (the page replays them directly from IndexedDB), and the document list falls back to the locally downloaded library (title/type/tag filtering) instead of going blank. Also fixed an uncaught error when marking a document unread offline.
   离线模式不再因第一次网络失败而失效。SW 缓存的会话缺失时也能离线进入应用——会话检查现在把 SW 合成的「离线且未缓存」响应视为离线，用本地记住的账户直接进入，而不是弹到无法登录的登录页；已下载到离线库的文档在 SW 缺失或缓存未命中时也能离线打开（页面直接回放 IndexedDB）；文档列表回退为本地已下载库（支持标题/类型/标签筛选）而非空白。另修复离线标记未读时的未捕获异常。
 
@@ -48,8 +57,6 @@ Each entry is bilingual: English first, 中文随行。
   客户端连接页：「服务器不可达」提示此前写在隐藏元素上、从未真正显示；现在探测失败时会正常显示在连接卡片上。
 - Secondary buttons inside cards (e.g. "Check for updates" on the offline page and "Sync now" in settings) no longer lose their label after a tap on Android. The card button rule paints a blue background while `.btn:hover` turned the text blue too; Android's sticky hover kept that state after the tap (and while the button was disabled). Card buttons now keep white text on hover. The rule is documented in `docs/frontend-style.md`.
   卡片内的次级按钮（离线页「检查并更新」、设置页「立即同步」等）在 Android 上点击后不再出现无文字状态：卡片按钮规则给蓝底，而 `.btn:hover` 又把文字改成蓝色，触屏的粘滞 hover 让该状态一直保持（按钮处于 disabled 时也一样）。现卡片内 `.btn:hover` 保持白字；规则已写入 `docs/frontend-style.md`。
-- Large first-time offline downloads no longer abort at the per-IP rate limit. The manifest and per-document endpoints now have separate limits (30 vs 600 hits/min/IP), 429 responses carry `Retry-After`, and the client pauses all download workers, shows the remaining seconds, and resumes the current document instead of marking the rest as failed; a second click no longer hits "manifest failed" because the manifest limit was exhausted by document requests. The offline prefetch endpoints also bypass the Service Worker cache fallback (and its 3.5s timeout), so a slow or timed-out prefetch can no longer replay an old document into the local library.
-  首次整库离线下载不再被每 IP 限速截断：清单与逐篇端点改为独立限速（30 / 600 次/分/IP），429 响应带 `Retry-After`，客户端会暂停所有下载 worker、显示剩余秒数，并在等待后重试当前篇目，而不是把剩余文章记为失败；第二次点击也不会再因清单端点被逐篇请求耗尽而报「获取服务器清单失败」。离线预取端点同时绕过 Service Worker 的缓存回退（及其 3.5 秒超时），避免慢请求或超时把旧文档回放成本地的新版本。
 
 ## [0.4.0] - 2026-11-09
 

@@ -1,14 +1,18 @@
 # Libry 多端客户端（clients/）
 
-薄壳策略：**壳里没有任何业务逻辑**。壳 = 一个 WebView，首次启动让用户填自家 Libry
-服务器地址，之后加载的就是线上 Web 应用本体（登录、阅读、离线缓存全部由服务端
-Web 层承担）。在线时永远是最新网页——**网页更新不需要发版客户端**；离线能力由
-Web 层的 Service Worker + IndexedDB 提供（见 `docs/offline.md`）。
+薄壳策略：**壳里没有任何业务逻辑**（壳内离线阅读器与镜像桥是 Web 层快照的通用展示
+逻辑，由引擎仓库维护、构建时刷新 `ui/lib/offline.js`）。壳 = 一个 WebView，首次启动
+让用户填自家 Libry 服务器地址，之后加载的就是线上 Web 应用本体（登录、阅读、离线
+缓存全部由服务端 Web 层承担）。在线时永远是最新网页——**网页更新不需要发版客户端**；
+在线离线能力由 Web 层的 Service Worker + IndexedDB 提供，客户端壳另有一条不依赖
+SW 的可靠离线面：壳内离线阅读器 + 镜像库（见 `docs/offline.md`「壳内离线阅读器与镜像」）。
 
 ```
 clients/
 └── shell/
-    ├── ui/index.html          # 首启/换服务器页（纯静态：记地址；连过的地址启动即连——离线也进，仅主动断开后手动）
+    ├── ui/index.html          # 首启/换服务器页 + 离线门户（探测可达即连；不可达不裸跳，进离线阅读）
+    ├── ui/reader.html         # 壳内离线阅读器（读壳 origin 镜像库：列表/正文/上下篇/图片）
+    ├── ui/bridge.html         # 镜像桥（远端 Web 应用经 iframe+postMessage 同步离线库到壳 origin）
     └── src-tauri/             # Tauri 2 工程（Rust 侧仅样板代码，无自定义 command）
         ├── src/               #   lib.rs + main.rs（~10 行）
         ├── tauri.conf.json    #   窗口/打包配置；frontendDist 指向 ../ui
@@ -18,11 +22,12 @@ clients/
 设计要点：
 
 - **无 IPC**：壳不定义任何 Tauri command，远程页面默认无 IPC 权限，与浏览器访问同权。
-- **连接策略**：连接过的地址存于壳的 localStorage（`libry-server`）。启动**立即自动连接**
-  （期间只显示锁定的连接中界面，无可点击元素）——在线时由远端 Service Worker 的
-  network-first 给出最新网页，断网/宕机时由它回放缓存内容**直接进入离线阅读**（首次使用前
-  需至少在线登录一次）。仅当用户在 Web 设置页「断开连接」后（`libry-server-noauto` 置位）
-  启动停留在「上次连接」卡片，由用户手动决定。
+- **连接策略**：连接过的地址存于壳的 localStorage（`libry-server`）。启动显示锁定的
+  「连接中」界面并后台探测（icon.png，4s 超时）：可达就**立即自动连接**（在线=远端
+  network-first 最新网页）；不可达进**离线门户**——绝不裸跳（跳转会落到 WebView 系统错误页），
+  门户提供「进入离线阅读」（壳内阅读器，读壳 origin 镜像库）、「重试连接」「更换服务器」。
+  仅当用户在 Web 设置页「断开连接」后（`libry-server-noauto` 置位）启动停留在
+  「上次连接」卡片，由用户手动决定。
 - **壳 ↔ Web 跳转标记**（跨 origin，只能靠 URL 传）：壳连接时给目标 URL 追加
   `?_libryHome=<壳首页>`，Web 层存下后供设置页「断开连接并更换服务器」（仅壳内可见）跳回壳页；
   跳回时带 `?_libryDisconnected=1`，壳保留地址记忆（`libry-server-noauto` 置位）但之后启动

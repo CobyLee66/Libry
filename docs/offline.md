@@ -5,8 +5,9 @@
 ## 总体分层
 
 ```
-┌─ Tauri 2 薄壳（clients/shell/，可选）─ 首启填服务器 URL → WebView 加载，零 IPC、零业务逻辑
-│     └── 与浏览器 PWA 使用同一套 Web 层，桌面 PWA（Chrome「安装应用」）同样可用
+┌─ Tauri 2 薄壳（clients/shell/，可选）─ 首启填服务器 URL → WebView 加载，零 IPC
+│     ├─ 连接页：探测可达即连；不可达进离线门户（不裸跳，杜绝系统错误页）
+│     └─ 离线阅读器 reader.html + 镜像桥 bridge.html：壳 origin 的本地离线面（见下节）
 ├─ Web 离线层（libry/static/）
 │   ├─ sw.js            # 在线优先的请求策略 + 壳预缓存 + 素材 SWR
 │   └─ offline.js       # IndexedDB 离线库 + 增量下载队列 + 离线写队列（outbox），页面与 SW 共用
@@ -15,6 +16,23 @@
     ├─ GET /api/offline/manifest  # 可见文档 + 内容 sha256（增量协议）
     └─ GET /api/offline/doc?file= # 与 /api/doc 同构、无「已读」副作用
 ```
+
+## 壳内离线阅读器与镜像（Android 的可靠离线面）
+
+Android System WebView 对**远程站点**的 Service Worker 长期不可靠（注册/回放失败常见），
+壳内离线浏览不能押在 SW 上。壳资产是本地文件、永远可加载，因此把离线数据面搬到壳 origin：
+
+- **镜像桥**（`bridge.html`，壳资产）：远端 Web 应用「下载全部」后，经隐藏 iframe 加载
+  壳资产桥页，postMessage 增量同步离线库到壳 origin 的 IndexedDB（同一 `libry-offline`
+  结构，另含 `assets` store 存图片 dataURL）。桥回 ack 已存 hash 表，只发缺失/变化部分；
+  对账删除服务器已移除的文档；登出/清除离线数据时同步清空壳库。
+- **离线阅读器**（`reader.html`，壳资产）：纯 JS 渲染壳库——列表、正文（服务端渲染 HTML
+  直接展示）、上下篇、图片（`/raw/assets` 替换为镜像 dataURL）。
+- **离线门户**（连接页探测失败时的包装界面）：「进入离线阅读」直达壳内阅读器，
+  任何网络失败都展示包装过的 UI，不再出现 WebView 系统错误页。
+- 浏览器/桌面 PWA 无壳（`shellHome` 为空），自动跳过镜像，离线仍走 SW 路线（浏览器 SW 可靠）；
+  桌面壳同时享有两条路线。服务器需在 CSP `frame-src` 放行 Tauri 壳 origin（见 `deploy/Caddyfile`）。
+- 壳资产的 `lib/offline.js` 由各构建脚本与 CI 在构建时从 `libry/static/` 拷入（单一来源）。
 
 ## 为什么离线包缓存「渲染后 HTML」
 
@@ -45,6 +63,7 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 | `docs` | `['user','file']` | `{hash, payload, size, fetched_at}`——**按账户隔离**（同设备多账户互不可见） |
 | `meta` | `'key'` | `current-user`（页面登录后写、SW 读取）、`manifest-<user>`（上次同步的服务器清单快照） |
 | `outbox` | 自增 `id` | `{url, method, body, ts, user}`——离线写操作，恢复在线按序回放 |
+| `assets` | `['user','path']` | `{dataURL, saved_at}`——站内图片的 dataURL 副本（壳内离线阅读器断网渲染用，v2） |
 
 登出清理：当前用户 `docs` + manifest 删除、`current-user` 置空、通知 SW 清空 API
 响应缓存（按 URL 缓存的列表/会话跨账户需失效）；outbox 保留（本人再登录后续传）。
@@ -54,7 +73,7 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 1. 客户端 `GET /api/offline/manifest` → `{generated_at, docs: {file: {title, type, updated, hash}}}`（hash 为源 md 的 sha256，服务端现场计算，不依赖索引新鲜度）。
 2. 与本地 `docs` 按 `hash` 求差：新/变篇下载（`GET /api/offline/doc`），消失篇删除；hash 为空的本地记录（访问即缓存的）视为未验证、重新拉取。
 3. 每篇下载后解析 HTML 中 `img[src]` 提取 `/raw/assets/` 引用逐个抓取（SW 的 SWR 策略顺手写缓存）。
-4. 并发 3 节流；服务端离线端点独立限速（清单 30 次/分/IP、逐篇 600 次/分/IP），429 响应带 `Retry-After`，客户端按它暂停（进度条下方提示等待秒数）后自动续传，已下载内容保留；单篇 4xx/5xx/网络失败不阻塞整库，结果上报。
+4. 并发 3 节流；逐篇端点不限速（整库下载是合法连发），清单端点限速 30 次/分/IP；单篇 4xx/5xx/网络失败不阻塞整库，结果上报。下载到的站内图片转 dataURL 存 `assets` store，随文档一并镜像到壳内离线阅读器（见上节）。
 5. 离线管理页的「已下载文档」列表为可滚动表格：卡片加宽并减小侧边距，表头着色且吸顶，右侧常显自定义滚动条；每页最多 100 篇，按文章时间倒序（优先创建时间，最新在前），只保留标题与大小两列，长标题自动截断；IndexedDB 仍保留全量数据，分页不改变增量下载协议。
 
 ## 离线写队列（outbox）与冲突语义
@@ -77,10 +96,10 @@ payload 就是 `GET /api/offline/doc` 的完整 JSON（html + meta + prev/next +
 
 ## 已知限制
 
-- 壳/PWA 离线**首次启动**必须至少在线一次（SW 注册后才能离线拉起）；SW 仅在安全上下文
-  （HTTPS 或 localhost）注册——明文 HTTP（如局域网 IP 直连）下注册不上，离线能力降级：
-  应用已打开期间已下载内容仍可阅读（页面侧直接回放 IndexedDB），但重启后无法离线拉起，
-  离线管理页会在 SW 不可用时给出提示。
+- **客户端壳**的断网冷启动离线阅读走壳内镜像库，不依赖 SW（见「壳内离线阅读器与镜像」）；
+  **浏览器/PWA** 仍依赖 SW：离线首次启动必须至少在线一次（SW 注册后才能离线拉起），且 SW
+  仅在安全上下文（HTTPS 或 localhost）注册。SW 不可用时页面侧兜底保证应用打开期间可读，
+  重启后无法拉起——离线管理页会给出提示。
 - **页面侧离线兜底**（app.js）：`/api/session`、`/api/doc`、`/api/docs` 在 SW 缓存未命中
   （合成 503 `offline_not_cached`）或无 SW 网络直连失败时，应用直接回放 IndexedDB 离线库——
   会话按 `current-user` 进入离线模式、文档按已下载记录渲染（payload 与 `/api/doc` 同构）、

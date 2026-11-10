@@ -36,6 +36,12 @@ if [ ! -f "$SRC_TAURI/icons/icon.ico" ]; then
 fi
 echo "   ✅ 图标集就绪（rc.exe 兼容格式由 cargo tauri icon 生成）"
 
+# 壳内离线阅读器/镜像桥依赖引擎侧 offline.js（单一来源 libry/static，构建时刷新；产物不入库）
+UI_LIB_DIR="$SHELL_DIR/ui/lib"
+mkdir -p "$UI_LIB_DIR"
+cp -f "$CLIENTS_DIR/../libry/static/offline.js" "$UI_LIB_DIR/offline.js"
+echo "   ✅ offline.js 已同步（libry/static → ui/lib）"
+
 PROFILE="release"
 for a in "$@"; do
   [ "$a" = "--debug" ] && PROFILE="debug"

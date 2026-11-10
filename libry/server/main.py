@@ -75,11 +75,9 @@ deletions = DeletionStore(DATA_DIR / "deletions.json")
 sync_limiter = RateLimiter(max_hits=10, window_sec=60)
 data_sync_limiter = RateLimiter(max_hits=3, window_sec=60)
 purge_limiter = RateLimiter(max_hits=3, window_sec=60)
-# 离线预取通道：整库下载是几十次连发的合法操作，限宽不限死。
-# 清单与逐篇独立限速——整库同步会把逐篇端点打到上限，不能连带把清单端点也耗尽
-# （否则用户重试时连清单都拿不到，只能看到“获取服务器清单失败”）。
+# 离线预取通道：清单端点保留限速（现场全量读盘算哈希，防滥用）；
+# 逐篇端点不限速——整库下载是合法的连发操作，刻意限速只会截断下载。
 offline_manifest_limiter = RateLimiter(max_hits=30, window_sec=60)
-offline_doc_limiter = RateLimiter(max_hits=600, window_sec=60)
 
 
 def client_ip(request: Request) -> str:
@@ -438,9 +436,8 @@ async def get_doc(file: str, user: str = Depends(require_session)):
 
 
 @app.get("/api/offline/doc")
-async def offline_doc(request: Request, file: str, user: str = Depends(require_session)):
+async def offline_doc(file: str, user: str = Depends(require_session)):
     """离线预取通道：与 /api/doc 同构但不产生「已读」副作用。"""
-    _enforce_rate_limit(offline_doc_limiter, request)
     return _doc_payload(user, file, mark_read_on_open=False)
 
 

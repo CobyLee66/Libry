@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Libry Bridge</title>
+</head>
+<body>
+<!-- 壳内镜像桥：远端 Web 应用经 iframe + postMessage 把离线库增量同步到壳 origin 的
+     IndexedDB，供壳内离线阅读器断网渲染（Android WebView 的远程站点 Service Worker
+     不可靠，壳 origin 的本地库是唯一确定可用的离线数据面）。
+     信任模型：只接受本 WebView 内的直接父页面（e.source === window.top），
+     写入面仅限本地离线库——最坏情况是被攻破的服务器页面污染自己的离线缓存。 -->
+<script src="lib/offline.js"></script>
+<script>
+(function () {
+  'use strict';
+  var serverOrigin = '';
+  var user = '';
+  var have = {};  // 已存文档 → hash（ack 给父页面做增量）
+
+  function post(msg) { window.parent.postMessage(msg, serverOrigin); }
+
+  async function handle(e) {
+    if (e.source !== window.top) return;  // 只接受直接父页面
+    var d = e.data || {};
+    if (d.type === 'libry-mirror-hello') {
+      serverOrigin = e.origin;
+      user = String(d.user || '');
+      have = {};
+      try {
+        var rows = await LibryOffline.listDocs(user);
+        rows.forEach(function (r) { have[r.file] = r.hash; });
+      } catch (err) { /* 空库按无存量处理 */ }
+      post({ type: 'libry-mirror-ack', have: have });
+      return;
+    }
+    if (!serverOrigin || !user) return;
+    if (d.type === 'libry-mirror-doc' && d.user === user && d.file) {
+      await LibryOffline.saveDoc(user, String(d.file), String(d.hash || ''), d.payload);
+      have[String(d.file)] = String(d.hash || '');
+    } else if (d.type === 'libry-mirror-asset' && d.user === user && d.path && d.dataURL) {
+      await LibryOffline.saveAsset(user, String(d.path), String(d.dataURL));
+    } else if (d.type === 'libry-mirror-manifest' && d.user === user) {
+      await LibryOffline.saveManifest(user, d.manifest || null);
+    } else if (d.type === 'libry-mirror-current-user' && d.user === user) {
+      await LibryOffline.setCurrentUser(user);
+    } else if (d.type === 'libry-mirror-clear' && d.user === user) {
+      await LibryOffline.dropDocs(user);
+      await LibryOffline.dropAssets(user);
+      await LibryOffline.saveManifest(user, null);
+      var cur = await LibryOffline.currentUser();
+      if (cur === user) await LibryOffline.setCurrentUser(null);
+      have = {};
+    } else if (d.type === 'libry-mirror-done') {
+      // 对账：父页面发来的是其离线库全量，删掉壳库中服务器已不存在的文档
+      if (d.keep) {
+        var keepMap = {};
+        (d.keep || []).forEach(function (f) { keepMap[f] = true; });
+        var rows = await LibryOffline.listDocs(user);
+        for (var i = 0; i < rows.length; i++) {
+          if (!keepMap[rows[i].file]) await LibryOffline.deleteDoc(user, rows[i].file);
+        }
+      }
+      post({ type: 'libry-mirror-done-ok' });
+    }
+  }
+
+  window.addEventListener('message', function (e) {
+    handle(e).catch(function (err) {
+      // 桥内错误回传父页面（静默会让父页面的握手无限等待）
+      try {
+        window.parent.postMessage({
+          type: 'libry-mirror-error',
+          message: String((err && err.message) || err),
+        }, e.origin || '*');
+      } catch (e2) { /* 父页面不可达时无能为力 */ }
+    });
+  });
+  // ready 信号不含敏感数据，targetOrigin 尚未知（由 hello 的 e.origin 确立）
+  window.parent.postMessage({ type: 'libry-bridge-ready' }, '*');
+})();
+</script>
+</body>
+</html>

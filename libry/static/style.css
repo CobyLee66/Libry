@@ -416,6 +416,25 @@ input, select { font: inherit; }
 .tag-editor-suggest-name { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 .tag-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+/* 通用确认弹层（按钮可本地化；样式与标签编辑弹层同视觉体系） */
+.confirm-box {
+  position: fixed; z-index: 50; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 16px 16px; box-shadow: 0 8px 30px rgba(0,0,0,.2);
+}
+.confirm-text { margin: 0 0 16px; line-height: 1.6; }
+
+/* 离线状态行（设置页离线卡片与离线管理页；全局横幅已移除） */
+.offline-state {
+  margin: 0 0 12px; font-size: 13px; color: #b45309;
+  background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 10px;
+}
+
+/* 壳内离线阅读器镜像进度 */
+.offline-mirror { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+
 /* 轻提示 */
 .toast {
   position: fixed; z-index: 60; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -423,20 +442,6 @@ input, select { font: inherit; }
   font-size: 14px; max-width: calc(100vw - 32px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   box-shadow: 0 4px 16px rgba(0,0,0,.2);
-}
-/* 离线横幅可见时抬升 toast，避免互相遮挡 */
-.toast-lifted { bottom: 64px; }
-
-/* 离线模式横幅（全局，恢复在线自动消失） */
-.offline-banner {
-  position: fixed; z-index: 55; bottom: 0; left: 0; right: 0;
-  display: flex; justify-content: center; align-items: center; gap: 10px;
-  background: rgba(31,35,41,.92); color: #fff;
-  font-size: 13px; padding: 8px 14px;
-}
-.offline-pending {
-  font-size: 12px; background: rgba(255,255,255,.16);
-  border-radius: 10px; padding: 2px 8px;
 }
 
 /* 离线管理页 */
@@ -452,7 +457,6 @@ input, select { font: inherit; }
 }
 .offline-progress-bar { flex: 1; }
 .offline-progress-text { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
-.offline-waiting { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 .offline-list-card {
   width: min(860px, 100%);
   padding: 22px clamp(10px, 2.5vw, 18px);

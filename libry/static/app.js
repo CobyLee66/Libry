@@ -196,9 +196,11 @@
         outboxCount: 0,           // 离线写队列待同步条数
         offlineView: {            // 离线管理页状态
           busy: false, error: '', lastFailed: [],
-          docs: [], page: 1, manifest: null, usage: null, lastSync: '',
-          progress: { done: 0, total: 0, waiting: 0 },
+          docs: [], page: 1, manifest: null, usage: null, lastSync: '', docsBytes: 0,
+          progress: { done: 0, total: 0 },
+          mirror: null,           // 壳内离线阅读器镜像进度 {done, total}（仅壳环境有值）
         },
+        confirmBox: null,         // 通用确认弹层 {text, onOk}（替代原生 confirm，按钮可本地化）
         offlineScrollable: false,  // 已下载表格是否有溢出，决定是否显示自定义滚动条
         swUnavailable: false,     // SW 注册失败/不支持（HTTP 等非安全上下文）：重启后无法离线拉起
         sync: { syncing: false, error: '' },
@@ -454,18 +456,21 @@
         this.user = { name: '', admin: false }; this.users = [];
         this.offline = !navigator.onLine; this.outboxCount = 0;
         this.offlineView = { busy: false, error: '', lastFailed: [], docs: [],
-                             page: 1, manifest: null, usage: null, lastSync: '',
-                             progress: { done: 0, total: 0, waiting: 0 } };
+                             page: 1, manifest: null, usage: null, lastSync: '', docsBytes: 0,
+                             progress: { done: 0, total: 0 }, mirror: null };
         this.offlineScrollable = false;
         // 离线库按账户清理：文档缓存与清单快照随登出删除（outbox 保留待本人再登录回放）
         if (window.LibryOffline && prevUser) {
           await LibryOffline.setCurrentUser(null);
           await LibryOffline.dropDocs(prevUser);
+          await LibryOffline.dropAssets(prevUser);
           await LibryOffline.saveManifest(prevUser, null);
           try {
             const reg = await navigator.serviceWorker.ready;
             if (reg.active) reg.active.postMessage({ type: 'clear-api-cache' });
           } catch (e) { /* SW 未就绪时忽略 */ }
+          // 壳内镜像同步清理（尽力而为；失败时下次镜像按 ack 增量重建）
+          await this.mirrorClearShell(prevUser).catch(() => {});
         }
         location.hash = '#/login';
         this.view = 'login';
@@ -672,12 +677,13 @@
             this.showToast(this.t('doc.unmarkedToast'));
           } catch (e) { this.showToast(e.message); }
         } else {
-          if (!confirm(this.t('doc.markConfirm'))) return;
-          try {
-            await api('/api/deletions', { method: 'POST', body: { file } });
-            this.doc.meta.marked_deleted = true;
-            this.showToast(this.t('doc.markedToast'));
-          } catch (e) { this.showToast(e.message); }
+          this.openConfirm(this.t('doc.markConfirm'), async () => {
+            try {
+              await api('/api/deletions', { method: 'POST', body: { file } });
+              this.doc.meta.marked_deleted = true;
+              this.showToast(this.t('doc.markedToast'));
+            } catch (e) { this.showToast(e.message); }
+          });
         }
       },
 
@@ -691,33 +697,34 @@
 
       async executePurge() {
         if (!this.deletions.items.length) return;
-        if (!confirm(this.t('purge.confirm', { n: this.deletions.items.length }))) return;
-        this.purge.error = '';
-        this.purge.running = true;
-        const startedAt = new Date();
-        try {
-          await api('/api/deletions/execute', { method: 'POST' });
-          // 后台执行（含 publish/graph 重建），轮询状态直到 last_run 越过触发时刻
-          for (let i = 0; i < 100; i++) {
-            await new Promise(r => setTimeout(r, 3000));
-            const st = await api('/api/deletions/status');
-            this.purgeStatus = st;
-            if (st.last_run && new Date(st.last_run) >= startedAt) {
-              if (st.result === 'ok' || st.result === 'empty') {
-                this.showToast(this.fmtPurgeDetail(st) || this.t('purge.done'));
-              } else {
-                this.purge.error = this.fmtPurgeDetail(st) || this.t('purge.failed');
+        this.openConfirm(this.t('purge.confirm', { n: this.deletions.items.length }), async () => {
+          this.purge.error = '';
+          this.purge.running = true;
+          const startedAt = new Date();
+          try {
+            await api('/api/deletions/execute', { method: 'POST' });
+            // 后台执行（含 publish/graph 重建），轮询状态直到 last_run 越过触发时刻
+            for (let i = 0; i < 100; i++) {
+              await new Promise(r => setTimeout(r, 3000));
+              const st = await api('/api/deletions/status');
+              this.purgeStatus = st;
+              if (st.last_run && new Date(st.last_run) >= startedAt) {
+                if (st.result === 'ok' || st.result === 'empty') {
+                  this.showToast(this.fmtPurgeDetail(st) || this.t('purge.done'));
+                } else {
+                  this.purge.error = this.fmtPurgeDetail(st) || this.t('purge.failed');
+                }
+                break;
               }
-              break;
             }
+          } catch (e) {
+            this.purge.error = e.message === 'unauthorized' ? this.t('err.adminRequired') : e.message;
+          } finally {
+            this.purge.running = false;
+            await this.loadDeletions();
+            if (this.meta) await this.loadMeta();
           }
-        } catch (e) {
-          this.purge.error = e.message === 'unauthorized' ? this.t('err.adminRequired') : e.message;
-        } finally {
-          this.purge.running = false;
-          await this.loadDeletions();
-          if (this.meta) await this.loadMeta();
-        }
+        });
       },
 
       async loadUsers() {
@@ -747,13 +754,14 @@
       },
 
       async deleteUser(username) {
-        if (!confirm(this.t('users.deleteConfirm', { name: username }))) return;
-        try {
-          const data = await api('/api/users/' + encodeURIComponent(username), { method: 'DELETE' });
-          this.users = data.users;
-        } catch (e) {
-          alert(e.message);
-        }
+        this.openConfirm(this.t('users.deleteConfirm', { name: username }), async () => {
+          try {
+            const data = await api('/api/users/' + encodeURIComponent(username), { method: 'DELETE' });
+            this.users = data.users;
+          } catch (e) {
+            alert(e.message);
+          }
+        });
       },
 
       async changePassword() {
@@ -1177,6 +1185,10 @@
         try {
           const rows = await LibryOffline.listDocs(this.user.name);
           const manifest = await LibryOffline.getManifest(this.user.name);
+          // 文档数据字节数（IDB 内 payload 求和）：即时准确；usage 的 estimate 由
+          // 浏览器配额系统惰性回收，清除后短时间不回落，两个数字分工展示
+          const stats = await LibryOffline.docStats(this.user.name).catch(() => null);
+          v.docsBytes = stats ? stats.bytes : 0;
           v.docs = rows.map((r) => {
             const meta = (r.payload && r.payload.meta) || {};
             const created = meta.created ? String(meta.created) : '';
@@ -1208,10 +1220,12 @@
         if (!window.LibryOffline) return;
         const v = this.offlineView;
         v.busy = true; v.error = ''; v.lastFailed = [];
-        v.progress = { done: 0, total: 0, waiting: 0 };
+        v.progress = { done: 0, total: 0 };
         try {
           const r = await LibryOffline.syncContent(this.user.name, {
             onProgress: (p) => { v.progress = p; },
+            // 素材镜像：抓到的图片存离线库 assets，供壳内离线阅读器断网渲染
+            onAsset: (path, dataURL) => LibryOffline.saveAsset(this.user.name, path, dataURL),
           });
           v.lastFailed = r.failed || [];
           this.showToast(this.t('offline.done', { n: r.downloaded, removed: r.removed }));
@@ -1220,18 +1234,150 @@
             ? this.t('offlineErr.' + e.message) : (e.message || String(e));
         } finally {
           v.busy = false;
-          v.progress.waiting = 0;
           await this.loadOfflinePage();
+          // 镜像到壳内离线阅读器（仅壳环境；浏览器无壳自动跳过；失败静默——下次下载按 ack 增量补齐）
+          await this.mirrorToShell(this.user.name,
+            (done, total) => { v.mirror = { done, total }; });
+          v.mirror = null;
         }
+      },
+
+      /* ---------- 壳内离线阅读器镜像（仅客户端壳环境） ----------
+         远端页面无法直接写壳 origin 的 IndexedDB，经隐藏 iframe 加载壳资产 bridge.html
+         postMessage 增量同步；桥回 ack 已存 hash 表，只发缺失/变化的篇目与素材。 */
+
+      async _withShellBridge(fn, timeoutMs = 300000) {
+        if (!this.shellHome || !window.LibryOffline) return false;
+        const targetOrigin = this.shellHome.replace(/\/+$/, '');
+        return await new Promise((resolve) => {
+          const iframe = document.createElement('iframe');
+          iframe.style.display = 'none';
+          let settled = false;
+          let pendingResolve = null;
+          const finish = (ok) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            window.removeEventListener('message', onMessage);
+            iframe.remove();
+            if (pendingResolve) pendingResolve(null);
+            resolve(ok);
+          };
+          const nextMessage = () => new Promise((res) => { pendingResolve = res; });
+          const timer = setTimeout(() => finish(false), timeoutMs);
+          const onMessage = (e) => {
+            if (settled || e.source !== iframe.contentWindow || !pendingResolve) return;
+            const res = pendingResolve;
+            pendingResolve = null;
+            res(e.data || {});
+          };
+          window.addEventListener('message', onMessage);
+          iframe.src = targetOrigin + '/bridge.html';
+          document.body.appendChild(iframe);
+          (async () => {
+            try {
+              for (;;) {
+                const d = await nextMessage();
+                if (d && d.type === 'libry-bridge-ready') break;
+              }
+              await fn({ send: (msg) => iframe.contentWindow.postMessage(msg, targetOrigin), nextMessage });
+              // 等桥的收尾确认；桥内异常经 libry-mirror-error 上报，其余超时按成功收尾——
+              // 数据大概率已写入，且下次镜像按 ack 增量对账自愈
+              for (;;) {
+                const d = await Promise.race([
+                  nextMessage(),
+                  new Promise((res) => setTimeout(() => res(null), 10000)),
+                ]);
+                if (!d) break;
+                if (d.type === 'libry-bridge-done-ok') break;
+                if (d.type === 'libry-mirror-error') throw new Error('bridge: ' + d.message);
+              }
+              finish(true);
+            } catch (e) {
+              finish(false);
+            }
+          })();
+        });
+      },
+
+      async mirrorToShell(user, onProgress) {
+        return this._withShellBridge(async (bridge) => {
+          const docs = await LibryOffline.listDocs(user);
+          const manifest = await LibryOffline.getManifest(user);
+          bridge.send({ type: 'libry-mirror-hello', user });
+          let have = null;
+          for (;;) {
+            const d = await bridge.nextMessage();
+            if (d && d.type === 'libry-mirror-ack') { have = d.have || {}; break; }
+          }
+          const todo = docs.filter((r) => have[r.file] !== r.hash);
+          const sentFiles = new Set();
+          const sentAssets = new Set();
+          for (const r of todo) {
+            bridge.send({ type: 'libry-mirror-doc', user, file: r.file, hash: r.hash, payload: r.payload });
+            sentFiles.add(r.file);
+            for (const path of LibryOffline.extractAssetPaths((r.payload && r.payload.html) || '')) {
+              if (sentAssets.has(path)) continue;
+              sentAssets.add(path);
+              const dataURL = await LibryOffline.getAsset(user, path).catch(() => null);
+              if (dataURL) bridge.send({ type: 'libry-mirror-asset', user, path, dataURL });
+            }
+            if (onProgress) onProgress(sentFiles.size, todo.length);
+            await new Promise((res) => setTimeout(res, 0));  // 让出主线程，避免长任务卡 UI
+          }
+          bridge.send({ type: 'libry-mirror-manifest', user, manifest });
+          bridge.send({ type: 'libry-mirror-current-user', user });
+          // 对账基准 = 本地离线库全量（未变化的存量文档虽未重发，也不得被桥删掉）
+          bridge.send({ type: 'libry-mirror-done', keep: docs.map((r) => r.file) });
+        });
+      },
+
+      async mirrorClearShell(user) {
+        return this._withShellBridge(async (bridge) => {
+          bridge.send({ type: 'libry-mirror-hello', user });
+          for (;;) {
+            const d = await bridge.nextMessage();
+            if (d && d.type === 'libry-mirror-ack') break;
+          }
+          bridge.send({ type: 'libry-mirror-clear', user });
+          bridge.send({ type: 'libry-mirror-done' });
+        }, 15000);
+      },
+
+      /* ---------- 通用确认弹层（原生 confirm 的按钮文案无法本地化） ---------- */
+
+      openConfirm(text, onOk) {
+        this.confirmBox = { text, onOk };
+      },
+
+      closeConfirm() {
+        this.confirmBox = null;
+      },
+
+      async applyConfirm() {
+        const box = this.confirmBox;
+        if (!box) return;
+        this.confirmBox = null;
+        await box.onOk();
       },
 
       async clearOfflineData() {
         if (!window.LibryOffline) return;
-        if (!confirm(this.t('offline.clearConfirm'))) return;
-        await LibryOffline.dropDocs(this.user.name);
-        await LibryOffline.saveManifest(this.user.name, null);
-        this.showToast(this.t('offline.cleared'));
-        await this.loadOfflinePage();
+        this.openConfirm(this.t('offline.clearConfirm'), async () => {
+          const user = this.user.name;
+          await LibryOffline.dropDocs(user);
+          await LibryOffline.dropAssets(user);
+          await LibryOffline.saveManifest(user, null);
+          // 素材缓存一并清掉：否则 storage.estimate 的占用数字不会回落
+          try {
+            const reg = await navigator.serviceWorker.ready;
+            if (reg.active) reg.active.postMessage({ type: 'clear-asset-cache' });
+          } catch (e) { /* SW 未就绪时忽略 */ }
+          // 壳内镜像同步清空（尽力而为；失败时下次镜像按 ack 增量重建）
+          await this.mirrorClearShell(user).catch(() => {});
+          this.showToast(this.t('offline.cleared'));
+          await this.loadOfflinePage();
+        });
       },
 
       async onConnectivityChange(isOnline) {

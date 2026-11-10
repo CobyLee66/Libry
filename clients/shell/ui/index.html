@@ -45,6 +45,11 @@
     .ghost:hover { color: var(--primary); border-color: var(--primary); }
     .hint { color: var(--muted); font-size: 12px; margin: 12px 0 0; min-height: 1.2em; }
     .err { color: var(--danger); }
+    .portal-note {
+      color: var(--text); font-size: 13px; line-height: 1.6; text-align: left;
+      background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px;
+      padding: 8px 10px; margin: 0 0 16px;
+    }
     .hidden { display: none; }
   </style>
 </head>
@@ -60,6 +65,15 @@
       <button id="btnContinue"></button>
       <button class="ghost" id="btnChange"></button>
       <p class="hint" id="cardHint"></p>
+    </div>
+
+    <!-- 离线门户：探测不可达时的包装界面（断网/宕机都不会露出系统错误页） -->
+    <div id="offlineBox" class="hidden">
+      <div class="saved" id="portalUrl"></div>
+      <p class="portal-note" id="portalNote"></p>
+      <button id="btnReadOffline"></button>
+      <button class="ghost" id="btnRetry"></button>
+      <button class="ghost" id="btnPortalChange"></button>
     </div>
 
     <!-- 自动连接 splash：锁定不可点击，探测通过后立即跳转 -->
@@ -85,6 +99,9 @@
         continueBtn: '连接',
         offlineNote: '服务器不可达 — 可直接连接使用离线缓存，或更换地址',
         connecting: '连接中…',
+        portalNote: '当前无法连接服务器（设备可能处于离线状态）。已下载的离线内容仍可离线阅读。',
+        readOffline: '进入离线阅读',
+        retry: '重试连接',
         changeBtn: '更换服务器地址',
         goBtn: '连接服务器',
         hintBad: '地址无效 — 请输入服务器的 http(s) 地址'
@@ -94,6 +111,9 @@
         continueBtn: 'Connect',
         offlineNote: 'Server unreachable — you can still connect to use the offline cache, or change the URL',
         connecting: 'Connecting…',
+        portalNote: 'The server cannot be reached right now (you may be offline). Downloaded content is still available for offline reading.',
+        readOffline: 'Open offline reader',
+        retry: 'Retry connection',
         changeBtn: 'Change server URL',
         goBtn: 'Connect',
         hintBad: 'Invalid URL — enter the server\'s http(s) address'
@@ -106,6 +126,9 @@
       $('btnContinue').textContent = T.continueBtn;
       $('btnChange').textContent = T.changeBtn;
       $('btnGo').textContent = T.goBtn;
+      $('btnReadOffline').textContent = T.readOffline;
+      $('btnRetry').textContent = T.retry;
+      $('btnPortalChange').textContent = T.changeBtn;
       document.title = zh ? 'Libry · 书阁' : 'Libry';
 
       function normalize(raw) {
@@ -168,6 +191,7 @@
       // 上次连接卡片：knownOffline 为 true 时跳过探测直接显示离线提示
       function showSavedCard(url, knownOffline) {
         $('connectBox').classList.add('hidden');
+        $('offlineBox').classList.add('hidden');
         $('formBox').classList.add('hidden');
         $('savedBox').classList.remove('hidden');
         $('savedUrl').textContent = T.lastUsed + '：' + saved;
@@ -175,6 +199,35 @@
         // 后台探测可达性：失败仅补充提示（离线时仍可直接连接，Service Worker 会回放缓存内容）
         probe(url, function () {}, setOfflineNote);
       }
+
+      // 锁定连接中界面（探测期间与跳转前展示）
+      function showSplash(url) {
+        $('savedBox').classList.add('hidden');
+        $('formBox').classList.add('hidden');
+        $('offlineBox').classList.add('hidden');
+        $('connectBox').classList.remove('hidden');
+        $('connectUrl').textContent = url;
+        $('connectHint').textContent = T.connecting;
+      }
+
+      // 离线门户：探测不可达时停在壳内（跳转会落到 WebView 系统错误页）。
+      // 离线阅读由壳内阅读器承担——镜像库在在线时经 bridge.html 增量同步到壳 origin。
+      function showOfflinePortal(url) {
+        $('savedBox').classList.add('hidden');
+        $('formBox').classList.add('hidden');
+        $('connectBox').classList.add('hidden');
+        $('offlineBox').classList.remove('hidden');
+        $('portalUrl').textContent = T.lastUsed + '：' + url;
+        $('portalNote').textContent = T.portalNote;
+      }
+
+      $('btnReadOffline').onclick = function () { location.href = 'reader.html'; };
+      $('btnRetry').onclick = function () {
+        if (!saved) return;
+        showSplash(saved);
+        probe(saved, function () { connect(saved); }, function () { showOfflinePortal(saved); });
+      };
+      $('btnPortalChange').onclick = function () { showForm(saved); };
 
       $('btnContinue').onclick = function () { if (saved) connect(saved); };
       $('btnChange').onclick = function () { showForm(saved); };
@@ -191,10 +244,10 @@
         try { localStorage.setItem(NOAUTO_KEY, '1'); } catch (e) { /* 存储不可用 */ }
         showForm('', '');
       } else if (saved && !noauto) {
-        // 自动连接：立即整页跳转。在线时远端 SW network-first 给最新页面；
-        // 离线时由远端 SW 回放缓存直接进入离线阅读（探测与否都跳转，探测只会白等 0-4 秒）。
-        // 仅在用户主动断开过（noauto）时保留手动卡片；SW 缺失且服务器宕机才会落到 WebView 错误页。
-        connect(saved);
+        // 自动连接：探测可达立即跳转远端（在线=最新网页）；不可达进离线门户（不裸跳——
+        // 跳转会落到 WebView 系统错误页；断网时由壳内离线阅读器承担阅读）。
+        showSplash(saved);
+        probe(saved, function () { connect(saved); }, function () { showOfflinePortal(saved); });
       } else if (saved) {
         showSavedCard(saved);
       } else {

@@ -17,7 +17,9 @@ window.LibryLocales["en"] = {
     "personal": "Personal",
     "personalTitle": "Personal document",
     "personalWithTitle": "Personal · Owner: {owner}",
-    "language": "Language"
+    "language": "Language",
+    "confirm": "OK",
+    "cancel": "Cancel"
   },
   "login": {
     "username": "Username",
@@ -169,16 +171,18 @@ window.LibryLocales["en"] = {
   "offline": {
     "title": "Offline reading",
     "desc": "Download content visible to this account for offline reading. When online, the latest web content always takes priority — this page only manages the local cache.",
-    "swUnavailable": "Service Worker is unavailable in this environment (HTTPS or localhost required): downloaded content stays readable, but the app cannot start offline after a restart.",
+    "swUnavailable": "Service Worker is unavailable in this environment (HTTPS or localhost required): the browser/PWA cannot re-enter offline mode after a restart. In the client shell, downloaded content remains readable through the offline reader.",
     "statusTitle": "Local cache",
     "statDocs": "docs downloaded",
     "lastSync": "Server content version: {ts}",
     "storage": "Using {used} of {quota}",
+    "docsBytes": "Document data {size}",
+    "stateOffline": "Offline — browsing locally cached content",
+    "mirrorProgress": "Syncing to the shell offline reader {done}/{total}…",
     "downloadAll": "Download all",
     "update": "Check for updates",
     "downloading": "Downloading…",
     "progress": "Downloading {done}/{total}",
-    "waiting": "Server rate limit — resuming in {s}s…",
     "clear": "Clear offline data",
     "clearConfirm": "Clear all offline content for this account? Cached documents will need to be downloaded again.",
     "cleared": "Offline data cleared",
@@ -190,14 +194,12 @@ window.LibryLocales["en"] = {
     "pagePrev": "Previous",
     "pageNext": "Next",
     "pageInfo": "Page {page} of {pages} · {total} documents",
-    "banner": "Offline mode — reading locally cached content",
     "pending": "{n} pending sync",
     "synced": "Synced {n} offline change(s)",
     "reloginNeeded": "Session expired. Please sign in again to sync offline changes"
   },
   "offlineErr": {
     "manifest_failed": "Failed to fetch the server manifest. Please retry later",
-    "rate_limited": "The server is rate-limiting downloads. Downloaded content is kept — please retry later",
     "auth_required": "Your session has expired. Please sign in again",
     "network_failed": "Network unavailable. Check your connection and try again",
     "aborted": "Download aborted"

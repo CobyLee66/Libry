@@ -146,6 +146,12 @@ if [ -d "$ICONS_ANDROID" ]; then
     echo "   ✅ 启动图标已同步（icons/android → gen res，单一来源 libry/static/icon.png）"
 fi
 
+# 壳内离线阅读器/镜像桥依赖引擎侧 offline.js（单一来源 libry/static，构建时刷新；产物不入库）
+UI_LIB_DIR="$SHELL_DIR/ui/lib"
+mkdir -p "$UI_LIB_DIR"
+cp -f "$CLIENTS_DIR/../libry/static/offline.js" "$UI_LIB_DIR/offline.js"
+echo "   ✅ offline.js 已同步（libry/static → ui/lib）"
+
 # === Step 2: 构建 APK ===
 echo ""
 echo "🔨 Step 2: cargo tauri android build --apk（首次需下载 Gradle 依赖）..."

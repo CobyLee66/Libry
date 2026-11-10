@@ -68,6 +68,10 @@
       <div class="login-card">
         <h1>{{ t('offline.title') }}</h1>
         <p class="sync-desc">{{ t('offline.desc') }}</p>
+        <!-- 离线状态在这里展示（全局横幅已移除） -->
+        <p v-if="offline" class="offline-state">
+          {{ t('offline.stateOffline') }}<span v-if="outboxCount"> · {{ t('offline.pending', { n: outboxCount }) }}</span>
+        </p>
         <button class="btn" @click="openOffline">{{ t('settings.openOffline') }}</button>
       </div>
       <form class="login-card" @submit.prevent="changePassword">
@@ -408,11 +412,17 @@
         <!-- SW 注册失败/不支持（HTTP 局域网等非安全上下文）：已下载内容仍在，
              但重启应用后将无法离线拉起——提示用户改用 HTTPS 访问 -->
         <p v-if="swUnavailable" class="error">{{ t('offline.swUnavailable') }}</p>
+        <!-- 离线状态在这里展示（全局横幅已移除） -->
+        <p v-if="offline" class="offline-state">
+          {{ t('offline.stateOffline') }}<span v-if="outboxCount"> · {{ t('offline.pending', { n: outboxCount }) }}</span>
+        </p>
         <div class="offline-stats">
           <span class="offline-stat"><strong>{{ offlineView.docs.length }}</strong>{{ t('offline.statDocs') }}</span>
           <span v-if="offlineView.lastSync" class="offline-stat">
             {{ t('offline.lastSync', { ts: fmtSyncTs(offlineView.lastSync) }) }}
           </span>
+          <!-- 文档数据 = IDB 内 payload 求和（即时准确）；storage 为浏览器配额统计（惰性回收，短时滞后） -->
+          <span class="offline-stat">{{ t('offline.docsBytes', { size: fmtBytes(offlineView.docsBytes) }) }}</span>
           <span v-if="offlineView.usage" class="offline-stat">
             {{ t('offline.storage', { used: fmtBytes(offlineView.usage.usage), quota: fmtBytes(offlineView.usage.quota) }) }}
           </span>
@@ -432,8 +442,8 @@
           <span class="progress-bar offline-progress-bar"><i :style="{width: offlinePct + '%'}"></i></span>
           <span class="offline-progress-text">{{ t('offline.progress', { done: offlineView.progress.done, total: offlineView.progress.total }) }}</span>
         </div>
-        <p v-if="offlineView.busy && offlineView.progress.waiting" class="offline-waiting">
-          {{ t('offline.waiting', { s: offlineView.progress.waiting }) }}
+        <p v-if="offlineView.mirror" class="offline-mirror">
+          {{ t('offline.mirrorProgress', { done: offlineView.mirror.done, total: offlineView.mirror.total }) }}
         </p>
         <p v-if="offlineView.lastFailed && offlineView.lastFailed.length" class="error">
           {{ t('offline.failedDocs', { n: offlineView.lastFailed.length }) }}
@@ -614,14 +624,18 @@
     </div>
   </div>
 
-  <!-- 离线模式横幅（全局；恢复在线自动消失，待同步计数来自 outbox） -->
-  <div v-if="offline" class="offline-banner" role="status">
-    <span>{{ t('offline.banner') }}</span>
-    <span v-if="outboxCount" class="offline-pending">{{ t('offline.pending', { n: outboxCount }) }}</span>
+  <!-- 通用确认弹层（原生 confirm 的 OK/Cancel 按钮文案无法本地化） -->
+  <div v-if="confirmBox" class="modal-backdrop" @click.self="closeConfirm"></div>
+  <div v-if="confirmBox" class="confirm-box" role="alertdialog" aria-modal="true" :aria-label="t('common.confirm')">
+    <p class="confirm-text">{{ confirmBox.text }}</p>
+    <div class="tag-editor-actions">
+      <button class="btn btn-danger" @click="applyConfirm">{{ t('common.confirm') }}</button>
+      <button class="btn" @click="closeConfirm">{{ t('common.cancel') }}</button>
+    </div>
   </div>
 
   <!-- 轻提示 -->
-  <div v-if="toast" class="toast" :class="{ 'toast-lifted': offline }" role="status">{{ toast }}</div>
+  <div v-if="toast" class="toast" role="status">{{ toast }}</div>
 </div>
 <script src="/offline.js"></script>
 <script src="/app.js?v=20260903"></script>

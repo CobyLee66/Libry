@@ -7,17 +7,17 @@
    - docs   keyPath ['user','file'] → {user, file, hash, payload, size, fetched_at}
      payload 为 /api/offline/doc 的完整 JSON（服务端渲染 HTML，客户端不复刻渲染管线）
    - meta   keyPath 'key' → current-user / manifest-<user> 等单值记录
-   - outbox keyPath 'id' 自增 → {url, method, body, ts, user}（离线写操作，恢复在线按序回放） */
+   - outbox keyPath 'id' 自增 → {url, method, body, ts, user}（离线写操作，恢复在线按序回放）
+   - assets keyPath ['user','path'] → {user, path, dataURL, saved_at}
+     站内图片素材的 dataURL 副本：供壳内离线阅读器断网渲染（v2 新增） */
 (function () {
   const DB_NAME = 'libry-offline';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const ST_DOCS = 'docs';
   const ST_META = 'meta';
   const ST_OUTBOX = 'outbox';
+  const ST_ASSETS = 'assets';
   const DOWNLOAD_CONCURRENCY = 3;  // 对服务器友好；移动端弱网下也不至于打满
-  const RATE_LIMIT_MAX_RETRIES = 5;   // 单个请求被限速后最多重试几轮
-  const RATE_LIMIT_FALLBACK_SEC = 5;  // 服务端未给 Retry-After 时的指数退避起点
-  const RATE_LIMIT_MAX_WAIT_SEC = 120; // 单次等待上限，防止异常响应让下载无限挂起
 
   let dbPromise = null;
 
@@ -35,6 +35,9 @@
         }
         if (!db.objectStoreNames.contains(ST_OUTBOX)) {
           db.createObjectStore(ST_OUTBOX, { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains(ST_ASSETS)) {
+          db.createObjectStore(ST_ASSETS, { keyPath: ['user', 'path'] });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -75,31 +78,13 @@
     return IDBKeyRange.bound([user, ''], [user, '\uffff']);
   }
 
-  /* Retry-After 解析：服务端按秒返回；兼容 HTTP date 形态；上限保护 */
-  function parseRetryAfter(res) {
-    const raw = res.headers.get('Retry-After');
-    if (!raw) return 0;
-    const seconds = Number(raw);
-    if (Number.isFinite(seconds)) {
-      return Math.max(0, Math.min(RATE_LIMIT_MAX_WAIT_SEC, seconds));
-    }
-    const at = Date.parse(raw);
-    if (!Number.isNaN(at)) {
-      return Math.max(0, Math.min(RATE_LIMIT_MAX_WAIT_SEC, (at - Date.now()) / 1000));
-    }
-    return 0;
-  }
-
-  function sleep(ms, signal) {
+  /* Blob → dataURL：素材镜像到壳内离线阅读器时经 postMessage 传输用 */
+  function blobToDataURL(blob) {
     return new Promise((resolve, reject) => {
-      if (signal && signal.aborted) { reject(new Error('aborted')); return; }
-      let timer = null;
-      const onAbort = () => { clearTimeout(timer); reject(new Error('aborted')); };
-      timer = setTimeout(() => {
-        if (signal) signal.removeEventListener('abort', onAbort);
-        resolve();
-      }, ms);
-      if (signal) signal.addEventListener('abort', onAbort, { once: true });
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(blob);
     });
   }
 
@@ -182,6 +167,32 @@
       };
     },
 
+    /* ---------------- 素材镜像（壳内离线阅读器断网渲染图片用） ---------------- */
+
+    async saveAsset(user, path, dataURL) {
+      await idbPut(ST_ASSETS, { user, path, dataURL, saved_at: new Date().toISOString() });
+    },
+
+    async getAsset(user, path) {
+      const r = await idbGet(ST_ASSETS, [user, path]);
+      return r ? r.dataURL : null;
+    },
+
+    async dropAssets(user) {
+      const db = await openDb();
+      const keys = await reqAsPromise(
+        db.transaction(ST_ASSETS).objectStore(ST_ASSETS).getAllKeys(userRange(user)));
+      if (!keys.length) return;
+      const t = db.transaction(ST_ASSETS, 'readwrite');
+      const s = t.objectStore(ST_ASSETS);
+      keys.forEach((k) => s.delete(k));
+      await new Promise((resolve, reject) => {
+        t.oncomplete = resolve;
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error);
+      });
+    },
+
     /* ---------------- 清单快照（上次同步的服务器状态） ---------------- */
 
     async saveManifest(user, manifest) {
@@ -199,57 +210,25 @@
 
     async syncContent(user, opts = {}) {
       const onProgress = opts.onProgress || (() => {});
+      // onAsset(path, dataURL)：抓到的站内素材交给调用方（镜像到壳内离线阅读器用）；
+      // 未提供时仅预热 HTTP 缓存（在线 SW 的素材策略会顺手写缓存）
+      const onAsset = opts.onAsset || null;
       const signal = opts.signal || null;
       const check = () => { if (signal && signal.aborted) throw new Error('aborted'); };
       check();
 
       let fatal = null;
-      // 共享限速闸门：任一 worker 收到 429 后所有 worker 一起暂停，等 Retry-After
-      // 过去再重试当前篇目，避免 3 个并发持续把滑动窗口打满、把合法请求记成失败。
-      let gateUntil = 0;
       let done = 0;
       let total = 0;
       const emit = (ctx) => {
-        const waiting = Math.max(0, Math.ceil((gateUntil - Date.now()) / 1000));
-        onProgress({
-          done,
-          total,
-          file: (ctx && ctx.file) || '',
-          waiting: Math.min(waiting, RATE_LIMIT_MAX_WAIT_SEC),
-        });
-      };
-      const waitGate = async (ctx) => {
-        if (gateUntil <= Date.now()) return;
-        while (gateUntil > Date.now()) {
-          if (fatal) throw fatal;
-          check();
-          emit(ctx);
-          await sleep(Math.min(1000, Math.max(1, gateUntil - Date.now())), signal);
-        }
-        emit(ctx);
-      };
-      const fetchRateLimited = async (url, ctx) => {
-        let attempt = 0;
-        for (;;) {
-          await waitGate(ctx);
-          if (fatal) throw fatal;
-          check();
-          const res = await fetch(url, { cache: 'no-store' });
-          if (res.status !== 429) return res;
-          attempt++;
-          if (attempt > RATE_LIMIT_MAX_RETRIES) throw new Error('rate_limited');
-          const wait = parseRetryAfter(res) || Math.min(
-            RATE_LIMIT_MAX_WAIT_SEC,
-            RATE_LIMIT_FALLBACK_SEC * Math.pow(2, attempt - 1));
-          gateUntil = Math.max(gateUntil, Date.now() + wait * 1000);
-        }
+        onProgress({ done, total, file: (ctx && ctx.file) || '' });
       };
 
       let res;
       try {
-        res = await fetchRateLimited('/api/offline/manifest', { file: '' });
+        res = await fetch('/api/offline/manifest', { cache: 'no-store' });
       } catch (e) {
-        if (e.message === 'aborted' || e.message === 'rate_limited') throw e;
+        if (e.message === 'aborted') throw e;
         throw new Error('network_failed');
       }
       if (res.status === 401) throw new Error('auth_required');
@@ -282,19 +261,29 @@
           const job = toFetch[cursor++];
           const ctx = { file: job.file };
           try {
-            const r = await fetchRateLimited(
-              '/api/offline/doc?file=' + encodeURIComponent(job.file), ctx);
+            const r = await fetch(
+              '/api/offline/doc?file=' + encodeURIComponent(job.file), { cache: 'no-store' });
             if (r.status === 401) throw new Error('auth_required');
             if (!r.ok) throw new Error('doc_fetch_failed');
             const payload = await r.json();
             await this.saveDoc(user, job.file, job.hash, payload);
             for (const asset of extractAssetPaths(payload.html || '')) {
               check();
+              if (onAsset) {
+                // 素材镜像：读成 dataURL 交给调用方；失败退化为仅预热缓存
+                try {
+                  const imgRes = await fetch(asset, { cache: 'no-store' });
+                  if (imgRes.ok) {
+                    await onAsset(asset, await blobToDataURL(await imgRes.blob()));
+                    continue;
+                  }
+                } catch (e) { /* 网络瞬断：走下方预热兜底 */ }
+              }
               await fetch(asset).catch(() => { /* 素材缺失离线时显示裂图，不阻塞 */ });
             }
           } catch (e) {
             if (signal && signal.aborted) { fatal = fatal || new Error('aborted'); break; }
-            if (e.message === 'auth_required' || e.message === 'rate_limited') {
+            if (e.message === 'auth_required') {
               fatal = fatal || e;
               break;
             }
@@ -373,6 +362,9 @@
       result.remaining = await this.outboxCount(user);
       return result;
     },
+
+    /* 供页面侧镜像流程从 payload 提取素材路径（sw.js 的 docStrategy 亦内部使用） */
+    extractAssetPaths,
   };
 
   globalThis.LibryOffline = API;

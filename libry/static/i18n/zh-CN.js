@@ -17,7 +17,9 @@ window.LibryLocales["zh-CN"] = {
     "personal": "个人",
     "personalTitle": "个人文档",
     "personalWithTitle": "个人文档 · 所有者：{owner}",
-    "language": "语言"
+    "language": "语言",
+    "confirm": "确定",
+    "cancel": "取消"
   },
   "login": {
     "username": "用户名",
@@ -169,16 +171,18 @@ window.LibryLocales["zh-CN"] = {
   "offline": {
     "title": "离线阅读",
     "desc": "把当前账户可见的内容下载到本地，无网络时也能阅读；有网络时始终优先使用在线最新内容，本页仅管理本地缓存。",
-    "swUnavailable": "当前环境不支持 Service Worker（需 HTTPS 或 localhost 访问）：已下载内容仍可阅读，但重启应用后将无法离线进入。",
+    "swUnavailable": "当前环境不支持 Service Worker（需 HTTPS 或 localhost 访问）：浏览器/PWA 重启后将无法直接进入离线模式；客户端壳内已下载的内容仍可经离线阅读器阅读。",
     "statusTitle": "本地缓存",
     "statDocs": "篇已下载",
     "lastSync": "服务器内容版本：{ts}",
     "storage": "占用 {used} / 配额 {quota}",
+    "docsBytes": "文档数据 {size}",
+    "stateOffline": "当前离线 — 正在浏览本地缓存内容",
+    "mirrorProgress": "同步到壳内离线阅读器 {done}/{total}…",
     "downloadAll": "下载全部",
     "update": "检查并更新",
     "downloading": "下载中…",
     "progress": "下载中 {done}/{total}",
-    "waiting": "服务器限速，等待 {s} 秒后继续…",
     "clear": "清除离线数据",
     "clearConfirm": "确定清除本账户的全部离线内容？已缓存的文档删除后需重新下载。",
     "cleared": "离线数据已清除",
@@ -190,14 +194,12 @@ window.LibryLocales["zh-CN"] = {
     "pagePrev": "上一页",
     "pageNext": "下一页",
     "pageInfo": "第 {page} / {pages} 页 · 共 {total} 篇",
-    "banner": "离线模式 — 正在阅读本地缓存内容",
     "pending": "待同步 {n} 项",
     "synced": "已同步 {n} 项离线变更",
     "reloginNeeded": "登录已过期，请重新登录后继续同步离线变更"
   },
   "offlineErr": {
     "manifest_failed": "获取服务器清单失败，请稍后重试",
-    "rate_limited": "服务器限速，已下载内容会保留，请稍后重试",
     "auth_required": "登录已过期，请重新登录后再试",
     "network_failed": "网络不可用，请检查连接后重试",
     "aborted": "下载已中止"

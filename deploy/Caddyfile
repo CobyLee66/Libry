@@ -6,11 +6,13 @@ kb.example.com {
 	reverse_proxy 127.0.0.1:8000
 
 	# 安全响应头
+	# CSP 的 frame-src 放行 Tauri 壳 origin（固定协议约定）：Web 应用经隐藏 iframe
+	# 加载壳资产 bridge.html，把离线库镜像到壳 origin（客户端离线阅读器的数据面）。
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy same-origin
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src http://tauri.localhost https://tauri.localhost tauri://localhost"
 		-Server
 	}
 

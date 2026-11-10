@@ -65,6 +65,10 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'clear-api-cache') {
     caches.delete(API_CACHE);
   }
+  // 清除离线数据时由页面通知清空素材缓存——否则 storage.estimate 的占用数字不回落
+  if (event.data && event.data.type === 'clear-asset-cache') {
+    caches.delete(ASSET_CACHE);
+  }
 });
 
 function fetchNet(req, timeoutMs) {

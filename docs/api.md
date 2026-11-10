@@ -12,7 +12,7 @@
 | `GET /api/docs` | 列表：`q`（标题/摘要子串）、`tags`（逗号分隔，AND）、`type`、`date_from/to`、`visibility=all\|shared\|personal`、`status=all\|new\|unread\|read`、`sort=created\|updated\|title`、`page`；个人文档仅所有者与管理员可见 |
 | `GET /api/doc?file=` | 渲染 HTML + 元数据 + 上下篇 + 相关页面（related，需 graph.json）+ 阅读进度 `progress`（`{scroll, pct, updated_at}` 或 null）与手动书签状态 `marked`；打开自动标记已读；对无权者返回 404（与不存在不可区分） |
 | `GET /api/offline/manifest` | 离线包清单：当前用户可见文档 → `{title, type, updated, hash}`（源 md 的 sha256，现场计算），供客户端增量下载；限速 30 次/分/IP |
-| `GET /api/offline/doc?file=` | 离线预取通道：与 `/api/doc` 同构但**不产生已读副作用**（批量下载不打扰阅读状态）；限速 600 次/分/IP（与清单独立） |
+| `GET /api/offline/doc?file=` | 离线预取通道：与 `/api/doc` 同构但**不产生已读副作用**（批量下载不打扰阅读状态）；不限速 |
 | `GET /raw/assets/{path}` | vault 素材服务（图片等，仅 `raw/assets/` 子目录）：要求有效会话，`private, no-cache`；`raw/` 其余内容不经任何路由暴露 |
 | `GET /api/graph` | 全库关联图：nodes（title/type/tags）+ edges（[a, b, weight]）；无 graph.json 返回空；节点/边按当前用户可见性过滤 |
 | `GET /api/graph?file=` | 局部关联图：中心文档 + 一跳邻居节点 + 节点间边（阅读页「相关页面」图） |
@@ -46,7 +46,7 @@
 
 | 错误码 | 场景（状态码） |
 |---|---|
-| `rate_limited` | 登录/改密/清理/同步/离线预取触发限速（429）；离线端点响应带 `Retry-After`（秒），客户端应等待后重试 |
+| `rate_limited` | 登录/改密/清理/同步/离线清单触发限速（429）；响应带 `Retry-After`（秒），客户端应等待后重试 |
 | `invalid_credentials` | 登录用户名或密码错误（401） |
 | `current_password_wrong` | 当前密码错误（401） |
 | `password_too_short` | 密码不足 8 位（400） |

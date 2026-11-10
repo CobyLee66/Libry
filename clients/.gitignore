@@ -8,3 +8,6 @@ shell/src-tauri/Cargo.lock
 # 本机生成物：签名密钥与构建产物（密钥必须另备份，不入库）
 shell/keystore/
 dist/
+
+# 构建时从引擎 libry/static 拷入的脚本（壳内离线阅读器/镜像桥依赖，各构建脚本与 CI 刷新）
+shell/ui/lib/
